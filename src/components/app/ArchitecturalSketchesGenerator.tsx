@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { generateArchitecturalSketches, GenerateArchitecturalSketchesOutput } from '@/ai/flows/generate-architectural-sketches-flow';
-import { Loader2, FileUp, Architecture, Sparkles, Image as ImageIcon, Download } from 'lucide-react';
+import { Loader2, FileUp, Layers, Sparkles, Image as ImageIcon, Download } from 'lucide-react'; // Changed Architecture to Layers
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".txt,.pdf,.png,.jpg,.jpeg,.webp";
 
@@ -97,7 +97,7 @@ export default function ArchitecturalSketchesGenerator() {
     <Card className="w-full shadow-lg rounded-xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-2xl">
-          <Architecture className="h-7 w-7 text-accent" />
+          <Layers className="h-7 w-7 text-accent" /> {/* Changed Architecture to Layers */}
           Генератор Архитектурных Скетчей
         </CardTitle>
         <CardDescription>
@@ -173,3 +173,4 @@ export default function ArchitecturalSketchesGenerator() {
     </Card>
   );
 }
+
