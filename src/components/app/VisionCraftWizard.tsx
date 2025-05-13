@@ -49,17 +49,17 @@ export default function VisionCraftWizard() {
           fieldToUpdate = setProductVision;
           break;
         case 3: // Product Goals
-          promptText = `На основе следующего видения продукта: "${productVision}", предложи цели продукта.`;
+          promptText = `Ты опытный аналитик. На основе следующего видения продукта: "${productVision}", предложи цели продукта, оформи в виде пронумерованного списка. Сфокусируйся на целях в формулировке "продукт должен решать такую-то задачу"`;
           input = { idea: promptText };
           fieldToUpdate = setProductGoals;
           break;
         case 4: // Target Audience
-          promptText = `На основе видения продукта: "${productVision}" и целей: "${productGoals}", опиши целевую аудиторию.`;
+          promptText = `Ты опытный исслудователь рынка. На основе видения продукта: "${productVision}" и целей: "${productGoals}", опиши целевую аудиторию. Представь в виде пронумерованного списка. `;
           input = { idea: promptText };
           fieldToUpdate = setTargetAudience;
           break;
         case 5: // Key Features
-          promptText = `На основе видения: "${productVision}", целей: "${productGoals}", и аудитории: "${targetAudience}", предложи ключевые функции.`;
+          promptText = `На основе видения: "${productVision}", целей: "${productGoals}", и аудитории: "${targetAudience}", предложи ключевые функции. Функционал опиши в виде "система будет иметь функционал:"`;
           input = { idea: promptText };
           fieldToUpdate = setKeyFeatures;
           break;

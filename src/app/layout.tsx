@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'VisionCraft - Создание Видения Продукта',
-  description: 'Помощник для формирования видения продукта с использованием AI.',
+  title: 'AI Мастерская | Ваши Инструменты для Продуктов',
+  description: 'Коллекция AI-инструментов для помощи в создании, анализе и управлении продуктами.',
 };
 
 export default function RootLayout({
@@ -32,15 +32,15 @@ export default function RootLayout({
         className={cn(
           geistSans.variable, 
           geistMono.variable, 
-          "font-sans antialiased flex flex-col min-h-screen"
+          "font-sans antialiased flex flex-col min-h-screen bg-background"
         )}
       >
         <AppHeader />
         <main className="flex-grow container mx-auto px-4 py-8">
           {children}
         </main>
-        <footer className="py-6 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} VisionCraft. Все права защищены.
+        <footer className="py-6 text-center text-sm text-muted-foreground border-t">
+          © {new Date().getFullYear()} AI Мастерская. Все права защищены.
         </footer>
         <Toaster />
       </body>
