@@ -1,5 +1,5 @@
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText } from 'lucide-react'; // Added FileText
+import { Lightbulb, FileText, CalendarClock } from 'lucide-react'; // Added CalendarClock
 
 export default function HomePage() {
   const services = [
@@ -10,10 +10,16 @@ export default function HomePage() {
       icon: <Lightbulb className="h-8 w-8" />,
     },
     {
-      title: 'Документарный сервис',
+      title: 'Анализатор Документов', // Updated title for consistency
       description: 'Загрузите документ, и AI предоставит краткую сводку и определит его тип.',
       href: '/document-analyzer',
       icon: <FileText className="h-8 w-8" />,
+    },
+    {
+      title: 'События в документе',
+      description: 'Загрузите документ, и AI извлечет из него события с датами и описаниями.',
+      href: '/document-events',
+      icon: <CalendarClock className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
@@ -36,11 +42,16 @@ export default function HomePage() {
     // Calculate placeholders needed to fill the last row
     const placeholdersNeeded = (itemsPerRow - (numServices % itemsPerRow)) % itemsPerRow;
     
-    if (placeholdersNeeded === 0) {
+    if (placeholdersNeeded === 0 && numServices > 0) { // Ensure not to return null if numServices is 0 due to % itemsPerRow
       return null; // Last row is full, or an exact multiple of itemsPerRow services
     }
+    
+    // If numServices is 0, placeholdersNeeded will be 0, so it will fall through to this.
+    // We need to ensure it renders placeholders even if services.length is 0.
+    const countToRender = numServices === 0 ? itemsPerRow : placeholdersNeeded;
 
-    return Array.from({ length: placeholdersNeeded }).map((_, index) => (
+
+    return Array.from({ length: countToRender }).map((_, index) => (
       <div key={`placeholder-fill-${index}`} className="bg-card/50 border-2 border-dashed border-muted rounded-lg p-6 min-h-[200px] flex flex-col items-center justify-center text-center opacity-75">
          <svg className="w-12 h-12 text-muted-foreground mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
         <p className="text-muted-foreground font-medium">Новый сервис скоро</p>
