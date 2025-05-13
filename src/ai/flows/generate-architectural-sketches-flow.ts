@@ -52,42 +52,42 @@ const generateArchitecturalSketchesFlow = ai.defineFlow(
 
 
     if (supportedMediaMimeTypes.includes(mimeType)) {
-      promptPayloadElements.push({text: "Проанализируй следующее техническое задание (представлено как медиа-файл):"});
+      promptPayloadElements.push({text: "Analyze the following technical specification (provided as a media file):"});
       promptPayloadElements.push({media: {url: input.techSpecDataUri, mimeType: mimeType }});
 
     } else if (supportedTextMimeTypes.includes(mimeType)) {
       const decodedText = Buffer.from(base64Data, 'base64').toString('utf-8');
-      promptPayloadElements.push({text: "Проанализируй следующее техническое задание (представлено как текст):"});
+      promptPayloadElements.push({text: "Analyze the following technical specification (provided as text):"});
       promptPayloadElements.push({text: decodedText});
     } else {
       if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || mimeType === 'application/msword') {
-          throw new Error(`Файлы формата DOCX/DOC не поддерживаются для прямого анализа. Пожалуйста, сконвертируйте файл в PDF или TXT и загрузите снова.`);
+          throw new Error(`DOCX/DOC file formats are not supported for direct analysis. Please convert the file to PDF or TXT and upload again.`);
       }
-      throw new Error(`Тип файла '${mimeType}' не поддерживается. Пожалуйста, загрузите файл в формате TXT, PDF или изображение (PNG, JPG, WebP).`);
+      throw new Error(`File type '${mimeType}' is not supported. Please upload a TXT, PDF, or image file (PNG, JPG, WebP).`);
     }
     
     promptPayloadElements.push({
       text: `
-Ты — AI-эксперт по системной архитектуре. На основе предоставленного технического задания, сгенерируй ОДНО изображение. 
-Это изображение должно четко содержать ДВА РАЗДЕЛЬНЫХ, ПОДПИСАННЫХ блока-диаграммы:
+You are an AI expert in system architecture. Based on the provided technical specification, generate ONE image.
+This image must clearly contain TWO SEPARATE, LABELED block diagrams:
 
-1.  **Концептуальная архитектура:**
-    *   Покажи основные высокоуровневые компоненты системы (например, Frontend, Backend, База данных, Внешние сервисы).
-    *   Проиллюстрируй их главные взаимодействия и связи с помощью стрелок.
-    *   Эта диаграмма должна быть простой и понятной. Используй общепринятые блоки (прямоугольники) и стрелки.
-    *   Подпиши каждый блок и, если возможно, тип взаимодействия на стрелках (например, "API вызов", "Поток данных"). Все подписи должны быть на РУССКОМ ЯЗЫКЕ.
+1.  **Conceptual Architecture:**
+    *   Show the main high-level components of the system (e.g., Frontend, Backend, Database, External Services).
+    *   Illustrate their main interactions and connections using arrows.
+    *   This diagram should be simple and clear. Use standard blocks (rectangles) and arrows.
+    *   Label each block and, if possible, the type of interaction on the arrows (e.g., "API call", "Data flow"). All labels must be in ENGLISH.
 
-2.  **Архитектура приложения (Прикладная архитектура):**
-    *   Предоставь более детальный взгляд на структуру приложения, фокусируясь на ключевых модулях или сервисах внутри Backend или Frontend.
-    *   Покажи ключевые модули (например, Модуль аутентификации, Модуль управления пользователями, API Gateway, Сервис обработки заказов), слои (например, Presentation Layer, Business Logic Layer, Data Access Layer), и, если упомянуто в ТЗ, специфичные технологии или фреймворки для этих компонентов.
-    *   Проиллюстрируй потоки данных и зависимости между этими компонентами с помощью стрелок.
-    *   Используй стандартные архитектурные обозначения. Все подписи должны быть на РУССКОМ ЯЗЫКЕ.
+2.  **Application Architecture:**
+    *   Provide a more detailed view of the application structure, focusing on key modules or services within the Backend or Frontend.
+    *   Show key modules (e.g., Authentication Module, User Management Module, API Gateway, Order Processing Service), layers (e.g., Presentation Layer, Business Logic Layer, Data Access Layer), and, if mentioned in the TS, specific technologies or frameworks for these components.
+    *   Illustrate data flows and dependencies between these components using arrows.
+    *   Use standard architectural notations. All labels must be in ENGLISH.
 
-Убедись, что обе диаграммы четко разделены (например, горизонтальной линией или достаточным пространством) и подписаны заголовками "Концептуальная Архитектура" и "Архитектура Приложения" (или "Прикладная Архитектура") НА РУССКОМ ЯЗЫКЕ внутри единого сгенерированного изображения. 
+Ensure that both diagrams are clearly separated (e.g., by a horizontal line or sufficient space) and labeled with the headings "Conceptual Architecture" and "Application Architecture" in ENGLISH within the single generated image.
 
-Стиль должен быть профессиональным, четким, легко читаемым и подходящим для технической документации. Используй светлый фон для диаграмм и контрастный текст.
+The style should be professional, clear, easy to read, and suitable for technical documentation. Use a light background for the diagrams and contrasting text.
 
-Ключевое требование: ВСЕ текстовые элементы на изображении, включая названия компонентов, модулей, сервисов, слоев, описания взаимодействий на стрелках, и ОБЯЗАТЕЛЬНО заголовки самих диаграмм, должны быть на РУССКОМ ЯЗЫКЕ. Избегай использования английских терминов для меток, за исключением случаев, когда это название конкретной технологии, которое не имеет устоявшегося русского аналога и было явно упомянуто в исходном ТЗ (например, "PostgreSQL"). В общем случае, все метки — строго на русском.
+Key requirement: ALL textual elements in the image, including names of components, modules, services, layers, descriptions of interactions on arrows, and MANDATORILY the headings of the diagrams themselves, must be in ENGLISH.
       `
     });
 
@@ -120,7 +120,7 @@ const generateArchitecturalSketchesFlow = ai.defineFlow(
              // This might happen if the model returns a GCS URI which isn't directly usable by client.
              // For this app, we expect a data URI.
              if (attempt === MAX_RETRIES - 1) {
-                throw new Error(`AI не смог сгенерировать изображение в ожидаемом формате (data URI) после ${MAX_RETRIES} попыток.`);
+                throw new Error(`AI failed to generate an image in the expected format (data URI) after ${MAX_RETRIES} attempts.`);
              }
              // Retry might help if it's a transient issue with URI format.
              const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
@@ -133,7 +133,7 @@ const generateArchitecturalSketchesFlow = ai.defineFlow(
         
         console.warn(`Attempt ${attempt + 1}: AI did not return an image. Text response: ${text}`);
         if (attempt === MAX_RETRIES - 1) {
-          throw new Error(`AI не смог сгенерировать изображение после ${MAX_RETRIES} попыток. Последний текстовый ответ: ${text}`);
+          throw new Error(`AI failed to generate an image after ${MAX_RETRIES} attempts. Last text response: ${text}`);
         }
 
       } catch (e: any) {
@@ -151,7 +151,7 @@ const generateArchitecturalSketchesFlow = ai.defineFlow(
         
         if (isRetryableError) {
           if (attempt === MAX_RETRIES - 1) {
-            throw new Error('Сервис генерации изображений временно перегружен или достигнут лимит запросов. Пожалуйста, попробуйте позже.');
+            throw new Error('The image generation service is temporarily overloaded or the request limit has been reached. Please try again later.');
           }
           const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
           console.log(`Retryable error encountered. Retrying in ${delay / 1000}s... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
@@ -165,7 +165,7 @@ const generateArchitecturalSketchesFlow = ai.defineFlow(
       attempt++;
     }
     // Fallback, should ideally not be reached.
-    throw new Error('Не удалось получить изображение от AI после всех попыток.');
+    throw new Error('Failed to get an image from AI after all attempts.');
   }
 );
 
