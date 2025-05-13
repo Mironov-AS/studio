@@ -1,5 +1,6 @@
+
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock } from 'lucide-react'; // Added CalendarClock
+import { Lightbulb, FileText, CalendarClock, Layers } from 'lucide-react'; // Replaced Architecture with Layers
 
 export default function HomePage() {
   const services = [
@@ -10,7 +11,7 @@ export default function HomePage() {
       icon: <Lightbulb className="h-8 w-8" />,
     },
     {
-      title: 'Анализатор Документов', // Updated title for consistency
+      title: 'Анализатор Документов',
       description: 'Загрузите документ, и AI предоставит краткую сводку и определит его тип.',
       href: '/document-analyzer',
       icon: <FileText className="h-8 w-8" />,
@@ -20,6 +21,12 @@ export default function HomePage() {
       description: 'Загрузите документ, и AI извлечет из него события с датами и описаниями.',
       href: '/document-events',
       icon: <CalendarClock className="h-8 w-8" />,
+    },
+    {
+      title: 'Архитектурные Скетчи',
+      description: 'Загрузите ТЗ, и AI сгенерирует концептуальную и прикладную архитектуру в виде изображения.',
+      href: '/architectural-sketches',
+      icon: <Layers className="h-8 w-8" />, // Changed to Layers
     },
     // Add more services here in the future
   ];
@@ -42,12 +49,10 @@ export default function HomePage() {
     // Calculate placeholders needed to fill the last row
     const placeholdersNeeded = (itemsPerRow - (numServices % itemsPerRow)) % itemsPerRow;
     
-    if (placeholdersNeeded === 0 && numServices > 0) { // Ensure not to return null if numServices is 0 due to % itemsPerRow
-      return null; // Last row is full, or an exact multiple of itemsPerRow services
+    if (placeholdersNeeded === 0 && numServices > 0) { 
+      return null; 
     }
     
-    // If numServices is 0, placeholdersNeeded will be 0, so it will fall through to this.
-    // We need to ensure it renders placeholders even if services.length is 0.
     const countToRender = numServices === 0 ? itemsPerRow : placeholdersNeeded;
 
 
