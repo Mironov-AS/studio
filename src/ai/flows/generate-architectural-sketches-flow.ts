@@ -165,3 +165,4 @@ const generateArchitecturalSketchesFlow = ai.defineFlow(
     throw new Error('Не удалось получить изображение от AI после всех попыток.');
   }
 );
+
