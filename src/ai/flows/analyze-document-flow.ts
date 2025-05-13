@@ -109,10 +109,51 @@ const analyzeDocumentFlow = ai.defineFlow(
       throw new Error(`Тип файла '${mimeType}' не поддерживается. Пожалуйста, загрузите файл в формате TXT, PDF или изображение (PNG, JPG, WebP).`);
     }
 
-    const {output} = await prompt(promptInputPayload);
-    if (!output) {
-      throw new Error('AI did not return an output.');
+    const MAX_RETRIES = 3;
+    const INITIAL_DELAY_MS = 1000;
+    let attempt = 0;
+
+    while (attempt < MAX_RETRIES) {
+      try {
+        const result = await prompt(promptInputPayload);
+        const output = result.output;
+
+        if (output) {
+          return output; // Success
+        }
+        
+        // If !output, and not last attempt, loop will retry.
+        // If !output and this is the last attempt:
+        if (attempt === MAX_RETRIES - 1) {
+          throw new Error('AI не вернул ожидаемый результат после нескольких попыток.');
+        }
+
+      } catch (e: any) {
+        const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : '';
+        const isRetryableError = 
+          errorMessage.includes('503') || // Service Unavailable
+          errorMessage.includes('overloaded') || // Model Overloaded
+          errorMessage.includes('service unavailable') ||
+          errorMessage.includes('rate limit') || // Rate limit exceeded
+          errorMessage.includes('429'); // HTTP 429 Too Many Requests
+
+        if (isRetryableError) {
+          if (attempt === MAX_RETRIES - 1) {
+            // Last attempt failed with a retryable error
+            throw new Error('Сервис временно перегружен или достигнут лимит запросов. Пожалуйста, попробуйте позже.');
+          }
+          // Wait before retrying
+          const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          // Non-retryable error
+          throw e;
+        }
+      }
+      attempt++;
     }
-    return output;
+    // Fallback, should ideally not be reached if logic is perfect.
+    // This will be hit if all retries result in !output without throwing a catchable error during prompt call.
+    throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
