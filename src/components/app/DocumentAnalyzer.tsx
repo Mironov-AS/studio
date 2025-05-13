@@ -11,7 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { analyzeDocument, AnalyzeDocumentOutput } from '@/ai/flows/analyze-document-flow';
 import { Loader2, FileUp, FileText, Sparkles } from 'lucide-react';
 
-const ACCEPTABLE_FILE_EXTENSIONS = ".txt,.pdf,.png,.jpg,.jpeg,.gif,.doc,.docx";
+// Updated to reflect backend capabilities: TXT, PDF, and common image formats.
+const ACCEPTABLE_FILE_EXTENSIONS = ".txt,.pdf,.png,.jpg,.jpeg,.webp";
 
 export default function DocumentAnalyzer() {
   const [file, setFile] = useState<File | null>(null);
@@ -69,12 +70,11 @@ export default function DocumentAnalyzer() {
       });
     } catch (error) {
       console.error('Error analyzing document:', error);
-      let errorMessage = 'Произошла ошибка при обращении к AI. Убедитесь, что формат файла поддерживается.';
-      if (error instanceof Error && error.message && error.message !== 'AI did not return an output.') {
+      let errorMessage = 'Произошла ошибка при анализе документа.';
+      if (error instanceof Error) {
         errorMessage = error.message;
-      } else if (error instanceof Error && error.message === 'AI did not return an output.') {
-        errorMessage = 'AI не смог обработать данный файл или вернуть результат. Попробуйте другой файл или формат.';
       }
+      
       toast({
         title: 'Ошибка анализа',
         description: errorMessage,
