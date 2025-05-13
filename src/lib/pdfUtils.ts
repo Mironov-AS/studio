@@ -18,6 +18,7 @@ export const exportToPdf = async (productData: ProductData, techSpec: string, fi
   let yPosition = margin;
 
   // Add a title
+  pdf.setFont('Arial', 'bold'); // Set font for main title
   pdf.setFontSize(22);
   pdf.setTextColor(40, 40, 40); // Dark gray
   pdf.text('VisionCraft: Документация по продукту', pageWidth / 2, yPosition, { align: 'center' });
@@ -25,23 +26,28 @@ export const exportToPdf = async (productData: ProductData, techSpec: string, fi
 
   // Helper to add text and handle page breaks
   const addTextSection = (title: string, content: string) => {
-    if (yPosition + 10 > pageHeight - margin) { // Check for new page before title
+    // Ensure space for title
+    if (yPosition + 10 > pageHeight - margin) { 
       pdf.addPage();
       yPosition = margin;
     }
+    pdf.setFont('Arial', 'bold'); // Set font for section title
     pdf.setFontSize(16);
     pdf.setTextColor(0, 128, 128); // Teal for titles
     pdf.text(title, margin, yPosition);
     yPosition += 8;
 
-    pdf.setFontSize(11);
-    pdf.setTextColor(50, 50, 50); // Normal text color
     const lines = pdf.splitTextToSize(content, maxLineWidth);
     lines.forEach((line: string) => {
+      // Ensure space for this line of content
       if (yPosition + 5 > pageHeight - margin) {
         pdf.addPage();
         yPosition = margin;
       }
+      // Set font for content line (AFTER potential page break)
+      pdf.setFont('Arial', 'normal'); 
+      pdf.setFontSize(11);
+      pdf.setTextColor(50, 50, 50); // Normal text color
       pdf.text(line, margin, yPosition);
       yPosition += 5; // Line height
     });
@@ -49,8 +55,8 @@ export const exportToPdf = async (productData: ProductData, techSpec: string, fi
   };
 
   // Product Card Section
-  addTextSection('Карточка продукта', ''); // Title for section
-  yPosition -=5; // remove extra space after section title for subsections
+  // For "Карточка продукта", we'll use the same style as other section titles.
+  // We call addTextSection for each sub-item, which is fine.
   
   addTextSection('Идея', productData.idea);
   addTextSection('Видение продукта', productData.productVision);
@@ -58,7 +64,7 @@ export const exportToPdf = async (productData: ProductData, techSpec: string, fi
   addTextSection('Целевая аудитория', productData.targetAudience);
   addTextSection('Ключевые функции', productData.keyFeatures);
   
-  yPosition += 10; // Space before Tech Spec
+  yPosition += 5; // Space before Tech Spec, adjusted from 10 to 5 as addTextSection adds 5 already.
 
   // Technical Specification Section
   addTextSection('Техническое Задание', techSpec);
@@ -100,30 +106,47 @@ export const exportHtmlElementToPdf = async (elementId: string, fileName: string
   const pdfWidth = pdf.internal.pageSize.getWidth();
   const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
   
-  let currentHeight = 0;
-  const pageHeight = pdf.internal.pageSize.getHeight();
+  const pageHeightInternal = pdf.internal.pageSize.getHeight();
 
-  if (pdfHeight < pageHeight) {
+  if (pdfHeight < pageHeightInternal) { // Changed pageHeight to pageHeightInternal for clarity
      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
   } else {
     // Handle multi-page PDF for long content
-    let position = 0;
-    while(position < pdfHeight) {
+    let position = 0; // y-position in the source canvas image, in pixels
+    const canvasTotalHeight = canvas.height; // total height of the source canvas in pixels
+    const canvasWidth = canvas.width; // width of the source canvas in pixels
+
+    while(position < canvasTotalHeight) {
+      // Calculate the height of the segment to draw from the source canvas for the current PDF page
+      // This needs to be in source canvas pixel units.
+      // Max segment height in PDF units for one page is pageHeightInternal.
+      // Max segment height in canvas pixels = pageHeightInternal * (canvasWidth / pdfWidth)
+      const maxSegmentHeightInCanvasPixels = pageHeightInternal * (canvasWidth / pdfWidth);
+      const remainingCanvasHeight = canvasTotalHeight - position;
+      const currentSegmentHeightInCanvasPixels = Math.min(remainingCanvasHeight, maxSegmentHeightInCanvasPixels);
+
       const pageCanvas = document.createElement('canvas');
-      pageCanvas.width = canvas.width;
-      // Calculate height of the current page segment
-      const segmentHeight = Math.min(canvas.height - position * (canvas.width / pdfWidth), pageHeight * (canvas.width / pdfWidth));
-      pageCanvas.height = segmentHeight;
+      pageCanvas.width = canvasWidth;
+      pageCanvas.height = currentSegmentHeightInCanvasPixels;
+      
       const ctx = pageCanvas.getContext('2d');
-      // Draw the segment of the original canvas onto the page canvas
-      ctx?.drawImage(canvas, 0, -position * (canvas.width / pdfWidth) , canvas.width, canvas.height);
+      if (ctx) {
+        // Draw the segment of the original canvas onto the page canvas
+        // sX, sY, sWidth, sHeight, dX, dY, dWidth, dHeight
+        // sY is `position`
+        ctx.drawImage(canvas, 0, position, canvasWidth, currentSegmentHeightInCanvasPixels, 0, 0, canvasWidth, currentSegmentHeightInCanvasPixels);
+      }
+      
       const pageImgData = pageCanvas.toDataURL('image/png');
       
-      if (position > 0) {
+      if (position > 0) { // Add new page for subsequent segments
         pdf.addPage();
       }
-      pdf.addImage(pageImgData, 'PNG', 0, 0, pdfWidth, segmentHeight * (pdfWidth/canvas.width) );
-      position += segmentHeight / (canvas.width / pdfWidth) ;
+      // Calculate the height of this segment when rendered in the PDF
+      const segmentPdfHeight = currentSegmentHeightInCanvasPixels * (pdfWidth / canvasWidth);
+      pdf.addImage(pageImgData, 'PNG', 0, 0, pdfWidth, segmentPdfHeight);
+      
+      position += currentSegmentHeightInCanvasPixels;
     }
   }
   pdf.save(`${fileName}.pdf`);
