@@ -3,3 +3,4 @@ config();
 
 import '@/ai/flows/generate-tech-spec.ts';
 import '@/ai/flows/generate-product-vision.ts';
+import '@/ai/flows/analyze-document-flow.ts';
