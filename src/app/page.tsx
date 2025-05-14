@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home } from 'lucide-react'; // Added Home
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain } from 'lucide-react'; // Added Brain
 
 export default function HomePage() {
   const services = [
@@ -51,6 +51,12 @@ export default function HomePage() {
       description: 'AI-ассистент для корпоративных клиентов по подбору объектов и расчету условий лизинга недвижимости и оборудования.',
       href: '/home-leasing',
       icon: <Home className="h-8 w-8" />,
+    },
+    {
+      title: 'InnovHub: Центр Инноваций',
+      description: 'Платформа для сбора, анализа и управления инновационными идеями сотрудников с поддержкой AI.',
+      href: '/innovhub',
+      icon: <Brain className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
@@ -121,4 +127,3 @@ export default function HomePage() {
     </div>
   );
 }
-
