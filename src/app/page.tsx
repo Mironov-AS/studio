@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark } from 'lucide-react'; // Replaced Architecture with Layers, Added FileSignature and Landmark
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2 } from 'lucide-react'; // Added Building2
 
 export default function HomePage() {
   const services = [
@@ -35,10 +35,16 @@ export default function HomePage() {
       icon: <FileSignature className="h-8 w-8" />,
     },
     {
-      title: 'Робоэдвайзер по недвижимости',
-      description: 'AI-консультант для формирования инвестиционного плана в сфере недвижимости на основе ваших предпочтений.',
+      title: 'Робоэдвайзер по недвижимости (Частный)',
+      description: 'AI-консультант для формирования инвестиционного плана в сфере недвижимости для частных лиц.',
       href: '/robo-advisor',
       icon: <Landmark className="h-8 w-8" />,
+    },
+    {
+      title: 'Корпоративный Робоэдвайзер по недвижимости',
+      description: 'AI-консультант для формирования стратегического инвестиционного плана в сфере недвижимости для корпоративных клиентов.',
+      href: '/corporate-robo-advisor',
+      icon: <Building2 className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
@@ -109,4 +115,3 @@ export default function HomePage() {
     </div>
   );
 }
-
