@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2 } from 'lucide-react'; // Added Building2
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home } from 'lucide-react'; // Added Home
 
 export default function HomePage() {
   const services = [
@@ -45,6 +45,12 @@ export default function HomePage() {
       description: 'AI-консультант для формирования стратегического инвестиционного плана в сфере недвижимости для корпоративных клиентов.',
       href: '/corporate-robo-advisor',
       icon: <Building2 className="h-8 w-8" />,
+    },
+    {
+      title: 'Домашний лизинг (Корпоративный)',
+      description: 'AI-ассистент для корпоративных клиентов по подбору объектов и расчету условий лизинга недвижимости и оборудования.',
+      href: '/home-leasing',
+      icon: <Home className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
@@ -115,3 +121,4 @@ export default function HomePage() {
     </div>
   );
 }
+
