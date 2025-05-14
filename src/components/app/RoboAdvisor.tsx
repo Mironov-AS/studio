@@ -3,7 +3,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import type { z } from "zod";
+import { z } from "zod"; // Imported z from zod
 import { useState } from 'react';
 
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { generateRealEstateAdvice, type GenerateRealEstateAdviceInput, type GenerateRealEstateAdviceOutput } from "@/ai/flows/generate-real-estate-advice-flow";
-import { Loader2, Sparkles, Landmark, TrendingUp, MapPin, ListChecks, Lightbulb, HandCoins, ShieldCheck, Clock3, BriefcaseBusiness, AreaChart } from 'lucide-react';
+import { Loader2, Sparkles, Landmark, TrendingUp, MapPin, ListChecks, Lightbulb, HandCoins, ShieldCheck, Clock3, BriefcaseBusiness, AreaChart, Building } from 'lucide-react'; // Added Building
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const investmentHorizons = ['Краткосрочный (до 1 года)', 'Среднесрочный (1-5 лет)', 'Долгосрочный (более 5 лет)'] as const;
@@ -316,10 +316,7 @@ export default function RoboAdvisor() {
                     <Card key={index} className="bg-secondary/30 shadow-inner">
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-lg text-primary-foreground">
-                          {prop.type.toLowerCase().includes("квартир") && <BriefcaseBusiness className="h-5 w-5" />}
-                          {prop.type.toLowerCase().includes("коммерч") && <AreaChart className="h-5 w-5" />}
-                          {prop.type.toLowerCase().includes("земельн") && <Landmark className="h-5 w-5" />}
-                          {!prop.type.toLowerCase().includes("квартир") && !prop.type.toLowerCase().includes("коммерч") && !prop.type.toLowerCase().includes("земельн") && <Building className="h-5 w-5" />}
+                          {getPropertyIcon(prop.type)}
                            {prop.type}
                         </CardTitle>
                         <CardDescription className="text-sm">{prop.locationHint}</CardDescription>
@@ -364,10 +361,12 @@ export default function RoboAdvisor() {
   );
 }
 
-// Helper component for icon mapping if needed, or use inline like above
+// Helper component for icon mapping
 const getPropertyIcon = (type: string) => {
-  if (type.toLowerCase().includes("квартир")) return <BriefcaseBusiness className="h-5 w-5" />;
-  if (type.toLowerCase().includes("коммерч")) return <AreaChart className="h-5 w-5" />;
-  if (type.toLowerCase().includes("земельн")) return <Landmark className="h-5 w-5" />;
-  return <Landmark className="h-5 w-5" />; // Default icon
+  const lowerType = type.toLowerCase();
+  if (lowerType.includes("квартир")) return <BriefcaseBusiness className="h-5 w-5" />;
+  if (lowerType.includes("коммерч")) return <AreaChart className="h-5 w-5" />;
+  if (lowerType.includes("земельн")) return <Landmark className="h-5 w-5" />;
+  return <Building className="h-5 w-5" />; // Default icon
 };
+
