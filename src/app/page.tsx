@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature } from 'lucide-react'; // Replaced Architecture with Layers, Added FileSignature
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark } from 'lucide-react'; // Replaced Architecture with Layers, Added FileSignature and Landmark
 
 export default function HomePage() {
   const services = [
@@ -26,13 +26,19 @@ export default function HomePage() {
       title: 'Архитектурные Скетчи',
       description: 'Загрузите ТЗ, и AI сгенерирует концептуальную и прикладную архитектуру в виде изображения.',
       href: '/architectural-sketches',
-      icon: <Layers className="h-8 w-8" />, // Changed to Layers
+      icon: <Layers className="h-8 w-8" />,
     },
     {
       title: 'Контроль Договоров',
       description: 'Анализ договоров, извлечение условий, событий и формирование распоряжений с помощью AI.',
       href: '/contract-control',
       icon: <FileSignature className="h-8 w-8" />,
+    },
+    {
+      title: 'Робоэдвайзер по недвижимости',
+      description: 'AI-консультант для формирования инвестиционного плана в сфере недвижимости на основе ваших предпочтений.',
+      href: '/robo-advisor',
+      icon: <Landmark className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
