@@ -6,12 +6,11 @@
  * - processContract - A function that handles contract processing.
  * - ProcessContractInput - The input type for the processContract function.
  * - ProcessContractOutput - The return type for the processContract function.
- * - DispositionCardSchema - The Zod schema for the disposition card.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
-import {Buffer} from 'buffer';
+import {ai}from '@/ai/genkit';
+import {z}from 'genkit';
+import {Buffer}from 'buffer';
 
 const PartySchema = z.object({
   name: z.string().describe('Полное наименование стороны договора (например, ООО "Ромашка", Иванов Иван Иванович).'),
@@ -24,7 +23,8 @@ const KeyEventSchema = z.object({
   responsibleParty: z.string().optional().describe("Сторона, ответственная за выполнение (например, 'Банк', 'Клиент', или конкретное наименование стороны)."),
 });
 
-export const DispositionCardSchema = z.object({
+// DispositionCardSchema is now a local constant, not exported.
+const DispositionCardSchema = z.object({
   contractNumber: z.string().optional().describe('Номер договора.'),
   contractDate: z.string().optional().describe('Дата заключения договора (ГГГГ-ММ-ДД или ДД.ММ.ГГГГ).'),
   partiesInfo: z.string().optional().describe('Наименования сторон договора (кратко, например, "Банк vs Клиент" или "ООО Ромашка и ИП Пупкин").'),
@@ -127,7 +127,7 @@ const processContractFlow = ai.defineFlow(
     inputSchema: ProcessContractInputSchema,
     outputSchema: ProcessContractOutputSchema,
   },
-  async (input: ProcessContractInput) => {
+  async (input: ProcessContractInput): Promise<ProcessContractOutput> => {
     let promptInputPayload: z.infer<typeof InternalProcessContractPromptInputSchema>;
 
     if (input.documentDataUri) {
@@ -226,3 +226,4 @@ const processContractFlow = ai.defineFlow(
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
+

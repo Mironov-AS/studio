@@ -9,11 +9,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { processContract, ProcessContractOutput, DispositionCardSchema } from '@/ai/flows/process-contract-flow';
-import { Loader2, FileUp, FileText, Sparkles, ListChecks, Users, BarChart3, MessageSquare, Download, Info } from 'lucide-react';
+import { processContract, type ProcessContractOutput } from '@/ai/flows/process-contract-flow';
+import { Loader2, FileUp, FileText, Sparkles, ListChecks, Users, BarChart3, MessageSquare, Download, Info, FileSignature } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { exportHtmlElementToPdf } from '@/lib/pdfUtils';
-import type { z } from 'zod';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".txt,.pdf"; // Restricted to TXT and PDF as per flow capabilities
@@ -111,7 +111,7 @@ export default function ContractControlService() {
     }
   }
 
-  const renderDispositionCard = (cardData: z.infer<typeof DispositionCardSchema>) => (
+  const renderDispositionCard = (cardData: NonNullable<ProcessContractOutput['dispositionCard']>) => (
     <div id="disposition-card-content" className="p-4 border rounded-md bg-secondary/30 shadow-sm space-y-2 text-sm">
       <h4 className="text-md font-semibold text-primary">Распоряжение о постановке на учет</h4>
       <p><strong>Номер договора:</strong> {cardData.contractNumber || 'Не указан'}</p>
@@ -249,7 +249,7 @@ export default function ContractControlService() {
                 </AccordionContent>
               </AccordionItem>
               
-              {analysisResult.dispositionCard && (
+              {analysisResult.dispositionCard && Object.keys(analysisResult.dispositionCard).length > 0 && (
                 <AccordionItem value="disposition">
                     <AccordionTrigger className="text-lg font-semibold text-primary">Распоряжение о постановке на учет</AccordionTrigger>
                     <AccordionContent className="space-y-3">
@@ -310,10 +310,3 @@ export default function ContractControlService() {
     </div>
   );
 }
-
-// Helper components from shadcn/ui that might be used if Tabs are not directly available
-// For simplicity, assuming Tabs, TabsList, TabsTrigger, TabsContent are already in project
-const Tabs: React.FC<{defaultValue: string; className?: string; children: React.ReactNode}> = ({defaultValue, className, children}) => <div data-default-value={defaultValue} className={className}>{children}</div>;
-const TabsList: React.FC<{className?: string; children: React.ReactNode}> = ({className, children}) => <div className={className} role="tablist">{children}</div>;
-const TabsTrigger: React.FC<{value: string; children: React.ReactNode; className?: string}> = ({value, children, className}) => <button role="tab" aria-controls={`tabpanel-${value}`} data-state="inactive" className={className}>{children}</button>;
-const TabsContent: React.FC<{value: string; children: React.ReactNode; className?: string}> = ({value, children, className}) => <div id={`tabpanel-${value}`} role="tabpanel" className={className}>{children}</div>;
