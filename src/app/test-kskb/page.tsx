@@ -1,5 +1,5 @@
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { ShieldCheck, Workflow, Users, Gauge, MessageSquare, FileText, SearchCheck, Star, Truck, Bell, Smartphone, Share2, Eye } from 'lucide-react';
 
 export default function TestKskbPage() {
