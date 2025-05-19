@@ -18,7 +18,7 @@ const ChecklistItemSchema = z.object({
   text: z.string().min(1, "Текст пункта чек-листа не может быть пустым.").describe("Текст пункта чек-листа для проверки."),
 });
 
-export const VerifyDduInputSchema = z.object({
+const VerifyDduInputSchema = z.object({
   projectCompletionDate: z
     .string()
     .describe("Срок ввода объекта строительства в эксплуатацию (в формате ГГГГ-ММ-ДД)."),
@@ -31,7 +31,7 @@ export const VerifyDduInputSchema = z.object({
 });
 export type VerifyDduInput = z.infer<typeof VerifyDduInputSchema>;
 
-export const VerifiedItemSchema = z.object({
+const VerifiedItemSchema = z.object({
   originalChecklistItemId: z.string().describe("ID исходного пункта чек-листа."),
   checklistItemText: z.string().describe("Текст проверенного пункта чек-листа."),
   status: z.enum(["соответствует", "не соответствует", "частично соответствует", "не удалось определить"])
@@ -40,7 +40,7 @@ export const VerifiedItemSchema = z.object({
 });
 export type VerifiedItem = z.infer<typeof VerifiedItemSchema>;
 
-export const VerifyDduOutputSchema = z.object({
+const VerifyDduOutputSchema = z.object({
   verifiedItems: z.array(VerifiedItemSchema).describe("Список проверенных пунктов чек-листа с результатами."),
 });
 export type VerifyDduOutput = z.infer<typeof VerifyDduOutputSchema>;
@@ -185,5 +185,10 @@ const verifyDduFlow = ai.defineFlow(
   }
 );
 
-// Exporting schema types for use in the frontend component
-export type { VerifyDduInputSchema, VerifiedItemSchema as VerifyDduVerifiedItemSchema, VerifyDduOutputSchema };
+// Types are already exported above using z.infer, no need for the line below.
+// export type { VerifyDduInputSchema, VerifiedItemSchema as VerifyDduVerifiedItemSchema, VerifyDduOutputSchema };
+
+// Ensuring only types and the async function are exported for 'use server' compliance.
+// The schema consts (VerifyDduInputSchema, etc.) are now module-local.
+// The z.infer types (VerifyDduInput, VerifiedItem, VerifyDduOutput) ARE exported.
+// The main function (verifyDduAgainstChecklist) IS exported.
