@@ -1,6 +1,6 @@
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ShieldAlert, ListChecks, DollarSign, UserCheck, FileArchive, ShieldQuestion, LineChart, MessageCircle, Server } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { ShieldAlert, ListChecks, DollarSign, UserCheck, FileArchive, ShieldQuestion, LineChart, MessageCircle, ShieldCheck, Server } from 'lucide-react'; // Added ShieldCheck
 
 export default function DealInsurancePage() {
   const tzSections = [
