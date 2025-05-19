@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck } from 'lucide-react'; // Added ShieldCheck
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert } from 'lucide-react'; // Added ShieldCheck, ShieldAlert
 
 export default function HomePage() {
   const services = [
@@ -69,6 +69,12 @@ export default function HomePage() {
       description: 'Экосистема доверия и безопасности для B2B и B2C транзакций, где банк выступает гарантом честности и надежности.',
       href: '/test-kskb',
       icon: <ShieldCheck className="h-8 w-8" />,
+    },
+     {
+      title: 'Страхование сделок',
+      description: 'Минимизация рисков пользователей от неисполнения обязательств контрагентами.',
+      href: '/deal-insurance',
+      icon: <ShieldAlert className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];

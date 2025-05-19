@@ -1,6 +1,8 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { ShieldCheck, Workflow, Users, Gauge, MessageSquare, FileText, SearchCheck, Star, Truck, Bell, Smartphone, Share2, Eye } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function TestKskbPage() {
   const productVision = "Наше видение продукта – создать экосистему доверия и безопасности, которая станет стандартом для B2B и B2C транзакций в России. Мы стремимся построить лидирующую на рынке платформу, где банк выступает гарантом честности и надежности, значительно снижая риски и операционные издержки для всех участников. Наша платформа – это не просто инструмент для проведения сделок, это фундамент для построения долгосрочных и взаимовыгодных отношений между поставщиками и покупателями. Мы добьемся этого, предоставляя полный спектр услуг, обеспечивающих прозрачность, контроль качества и эффективное разрешение споров. В конечном итоге, мы хотим, чтобы каждая сделка, совершенная через нашу платформу, ассоциировалась с уверенностью в успехе и максимальной защитой интересов наших клиентов.";
@@ -10,7 +12,12 @@ export default function TestKskbPage() {
     { icon: <SearchCheck className="h-5 w-5 text-accent" />, text: "Автоматизированная проверка контрагентов" },
     { icon: <MessageSquare className="h-5 w-5 text-accent" />, text: "Встроенный механизм разрешения споров с привлечением экспертов банка" },
     { icon: <Star className="h-5 w-5 text-accent" />, text: "Система рейтингов и отзывов" },
-    { icon: <ShieldCheck className="h-5 w-5 text-accent" />, text: "Страхование сделок от неисполнения обязательств" },
+    { 
+      icon: <ShieldCheck className="h-5 w-5 text-accent" />, 
+      text: "Страхование сделок от неисполнения обязательств",
+      href: "/deal-insurance",
+      isServiceLink: true,
+    },
     { icon: <Truck className="h-5 w-5 text-accent" />, text: "Интеграция с логистическими компаниями для отслеживания доставки" },
     { icon: <FileText className="h-5 w-5 text-accent" />, text: "Инструменты для автоматизации документооборота" },
     { icon: <Users className="h-5 w-5 text-accent" />, text: "Персонализированные панели управления для поставщиков и покупателей" },
@@ -49,7 +56,15 @@ export default function TestKskbPage() {
               {features.map((feature, index) => (
                 <div key={index} className="flex items-start gap-3 p-3 bg-card rounded-md shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex-shrink-0 mt-1">{feature.icon}</div>
-                  <p className="text-sm text-foreground">{feature.text}</p>
+                  {feature.isServiceLink && feature.href ? (
+                    <Button asChild variant="link" className="p-0 h-auto text-sm text-foreground hover:text-accent text-left justify-start flex-grow text-wrap">
+                      <Link href={feature.href}>
+                        {feature.text}
+                      </Link>
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-foreground">{feature.text}</p>
+                  )}
                 </div>
               ))}
             </div>
