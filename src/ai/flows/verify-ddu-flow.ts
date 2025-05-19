@@ -10,8 +10,8 @@
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
-import {Buffer} from 'buffer'; // Not strictly needed if only PDF data URI is passed to Gemini
+import {z}from 'genkit';
+// Buffer is not strictly needed if only PDF data URI is passed to Gemini
 
 const ChecklistItemSchema = z.object({
   id: z.string().describe("Уникальный идентификатор пункта чек-листа."),
@@ -21,7 +21,8 @@ const ChecklistItemSchema = z.object({
 const VerifyDduInputSchema = z.object({
   projectCompletionDate: z
     .string()
-    .describe("Срок ввода объекта строительства в эксплуатацию (в формате ГГГГ-ММ-ДД)."),
+    .optional()
+    .describe("Срок ввода объекта строительства в эксплуатацию (в формате ГГГГ-ММ-ДД). Если не указан, AI должен это учесть."),
   dduDocumentDataUri: z
     .string()
     .describe(
@@ -47,7 +48,7 @@ export type VerifyDduOutput = z.infer<typeof VerifyDduOutputSchema>;
 
 // Internal schema for the prompt's input, as the DDU is media
 const InternalVerifyDduPromptInputSchema = z.object({
-  projectCompletionDate: z.string(),
+  projectCompletionDate: z.string().optional(),
   dduDocumentDataUri: z.string(), // The media URI
   checklistJson: z.string().describe("Чек-лист в формате JSON строки для передачи в промпт."), // Checklist items as a JSON string
 });
@@ -72,7 +73,11 @@ const prompt = ai.definePrompt({
 **Задача:** Проанализировать предоставленный проект ДДУ и проверить его на соответствие каждому пункту из предоставленного чек-листа.
 
 **Контекстная информация:**
+{{#if projectCompletionDate}}
 -   Срок ввода объекта строительства в эксплуатацию: {{{projectCompletionDate}}}
+{{else}}
+-   Срок ввода объекта строительства в эксплуатацию: Не указан
+{{/if}}
 
 **Документ для анализа (Проект ДДУ):**
 {{media url=dduDocumentDataUri}}
@@ -185,10 +190,7 @@ const verifyDduFlow = ai.defineFlow(
   }
 );
 
-// Types are already exported above using z.infer, no need for the line below.
-// export type { VerifyDduInputSchema, VerifiedItemSchema as VerifyDduVerifiedItemSchema, VerifyDduOutputSchema };
-
-// Ensuring only types and the async function are exported for 'use server' compliance.
-// The schema consts (VerifyDduInputSchema, etc.) are now module-local.
+// Types are already exported above using z.infer.
+// The schema consts (VerifyDduInputSchema, etc.) are module-local.
 // The z.infer types (VerifyDduInput, VerifiedItem, VerifyDduOutput) ARE exported.
 // The main function (verifyDduAgainstChecklist) IS exported.

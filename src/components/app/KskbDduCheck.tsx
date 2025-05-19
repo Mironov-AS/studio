@@ -121,10 +121,6 @@ export default function KskbDduCheck() {
   };
 
   const handleVerifyDdu = async () => {
-    if (!projectCompletionDate) {
-      toast({ title: 'Ошибка', description: 'Пожалуйста, укажите срок ввода объекта.', variant: 'destructive' });
-      return;
-    }
     if (!dduFile || !dduFileDataUri) {
       toast({ title: 'Файл не выбран', description: 'Пожалуйста, загрузите файл ДДУ.', variant: 'destructive' });
       return;
@@ -138,7 +134,7 @@ export default function KskbDduCheck() {
     setVerificationResults(null);
 
     const input: VerifyDduInput = {
-      projectCompletionDate: format(projectCompletionDate, "yyyy-MM-dd"),
+      projectCompletionDate: projectCompletionDate ? format(projectCompletionDate, "yyyy-MM-dd") : undefined,
       dduDocumentDataUri: dduFileDataUri,
       checklist: checklistItems,
     };
@@ -189,13 +185,13 @@ export default function KskbDduCheck() {
             КСКБ: Проверка ДДУ по Чек-листу
           </CardTitle>
           <CardDescription>
-            Загрузите проект ДДУ (PDF), укажите срок ввода объекта и заполните чек-лист для автоматической проверки.
+            Загрузите проект ДДУ (PDF), укажите (необязательно) срок ввода объекта и заполните чек-лист для автоматической проверки.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label htmlFor="project-completion-date" className="font-medium">Срок ввода объекта в эксплуатацию</Label>
+              <Label htmlFor="project-completion-date" className="font-medium">Срок ввода объекта в эксплуатацию (необязательно)</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -289,7 +285,7 @@ export default function KskbDduCheck() {
 
           <Button 
             onClick={handleVerifyDdu} 
-            disabled={isLoading || !dduFile || !projectCompletionDate || checklistItems.length === 0} 
+            disabled={isLoading || !dduFile || checklistItems.length === 0} 
             className="w-full text-lg py-6 rounded-lg"
           >
             {isLoading ? (
@@ -300,7 +296,7 @@ export default function KskbDduCheck() {
             Запустить проверку ДДУ
           </Button>
         </CardContent>
-        { dduFile && projectCompletionDate && checklistItems.length > 0 && !isLoading && !verificationResults &&
+        { dduFile && checklistItems.length > 0 && !isLoading && !verificationResults &&
             <CardFooter>
                 <p className="text-xs text-muted-foreground text-center w-full">
                     Все данные готовы к проверке. Нажмите кнопку выше.
