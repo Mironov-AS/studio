@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain } from 'lucide-react'; // Added Brain
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2 } from 'lucide-react'; // Added FileCheck2
 
 export default function HomePage() {
   const services = [
@@ -57,6 +57,12 @@ export default function HomePage() {
       description: 'Платформа для сбора, анализа и управления инновационными идеями сотрудников с поддержкой AI.',
       href: '/innovhub',
       icon: <Brain className="h-8 w-8" />,
+    },
+    {
+      title: 'КСКБ проверка ДДУ',
+      description: 'Автоматизированная проверка договоров долевого участия (ДДУ) по настраиваемому чек-листу.',
+      href: '/kskb-ddu-check',
+      icon: <FileCheck2 className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];

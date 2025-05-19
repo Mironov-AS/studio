@@ -12,4 +12,5 @@ import '@/ai/flows/generate-real-estate-advice-flow.ts';
 import '@/ai/flows/generate-corporate-real-estate-advice-flow.ts';
 import '@/ai/flows/generate-leasing-proposal-flow.ts';
 import '@/ai/flows/generate-innovation-action-plan-flow.ts';
+import '@/ai/flows/verify-ddu-flow.ts';
 
