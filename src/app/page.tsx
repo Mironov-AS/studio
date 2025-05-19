@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2 } from 'lucide-react'; // Added FileCheck2
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck } from 'lucide-react'; // Added ShieldCheck
 
 export default function HomePage() {
   const services = [
@@ -63,6 +63,12 @@ export default function HomePage() {
       description: 'Автоматизированная проверка договоров долевого участия (ДДУ) по настраиваемому чек-листу.',
       href: '/kskb-ddu-check',
       icon: <FileCheck2 className="h-8 w-8" />,
+    },
+    {
+      title: 'Тест с КСКБ',
+      description: 'Экосистема доверия и безопасности для B2B и B2C транзакций, где банк выступает гарантом честности и надежности.',
+      href: '/test-kskb',
+      icon: <ShieldCheck className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
