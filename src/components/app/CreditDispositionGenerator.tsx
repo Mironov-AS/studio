@@ -16,13 +16,23 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 // Import types, but not the schema object from the flow
 import { generateCreditDisposition, type GenerateCreditDispositionInput, type GenerateCreditDispositionOutput, type CreditDispositionCardData } from '@/ai/flows/generate-credit-disposition-flow';
-import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2 } from 'lucide-react'; // Added Trash2
+import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2, CalendarIcon } from 'lucide-react'; // Added CalendarIcon
 import { exportHtmlElementToPdf } from '@/lib/pdfUtils';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import {
+  Form, // Form provider
+  FormControl,
+  FormField, // The component that was missing
+  FormItem,
+  FormLabel,
+  // FormDescription, // Not used
+  // FormMessage, // Not used
+} from "@/components/ui/form";
+
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".pdf";
 
@@ -252,6 +262,7 @@ export default function CreditDispositionGenerator() {
                         className={cn("w-full justify-start text-left font-normal mt-1", !field.value && "text-muted-foreground", commonInputClass)}
                         disabled={readOnly}
                     >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
                         {field.value ? format(field.value instanceof Date ? field.value : parseISO(field.value as string), "dd.MM.yyyy", { locale: ru }) : <span>Выберите дату</span>}
                     </Button>
                     </PopoverTrigger>
@@ -361,65 +372,68 @@ export default function CreditDispositionGenerator() {
       )}
 
       {extractedData && (
-        <form onSubmit={form.handleSubmit(handleSaveEdits)}>
-          <Card id="disposition-card-view" className="mt-4 shadow-xl rounded-xl">
-            <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                    <CardTitle className="text-xl">Проект распоряжения</CardTitle>
-                    <CardDescription>Проверьте и при необходимости отредактируйте извлеченные данные.</CardDescription>
-                </div>
-                {!isEditing ? (
-                    <Button type="button" variant="outline" onClick={() => setIsEditing(true)} disabled={isLoading}>
-                        <Edit3 className="mr-2 h-4 w-4" /> Редактировать
-                    </Button>
-                ) : (
-                    <Button type="submit" variant="default" disabled={isLoading}>
-                        <Save className="mr-2 h-4 w-4" /> Сохранить изменения
-                    </Button>
-                )}
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-0.5">
-              {renderFormField('statementNumber', 'Номер заявления', 'text')}
-              {renderFormField('statementDate', 'Дата заявления', 'date')}
-              {renderFormField('borrowerName', 'Название заемщика', 'text')}
-              {renderFormField('borrowerInn', 'ИНН заемщика', 'text')}
-              {renderFormField('contractNumber', 'Номер договора', 'text')}
-              {renderFormField('contractDate', 'Дата договора', 'date')}
-              {renderFormField('creditType', 'Вид кредитования', 'select', ['Кредитная линия', 'Возобновляемая кредитная линия'])}
-              {renderFormField('limitCurrency', 'Валюта лимита', 'text')}
-              {renderFormField('contractAmount', 'Сумма договора', 'number')}
-              {renderFormField('borrowerAccountNumber', 'Расчётный счёт заемщика', 'text')}
-              {renderFormField('enterpriseCategory', 'Категория предприятия', 'select', ['Среднее', 'Малое', 'Микро'])}
-              {renderFormField('creditCommitteeDecision', 'Решение кредитного комитета', 'checkbox')}
-              {renderFormField('subsidyAgent', 'Агент субсидии', 'text')}
-              {renderFormField('notesAndSpecialConditions', 'Примечания и особые условия', 'textarea')}
-              {renderFormField('assetBusinessModel', 'Бизнес-модель активов', 'select', ['Удерживать для продажи', 'Иное'])}
-              {renderFormField('marketTransaction', 'Рыночность сделки', 'select', ['Да', 'Нет', 'Не применимо'])}
-              {renderFormField('commissionRate', 'Размер комиссии', 'number')}
-              {renderFormField('commissionPaymentSchedule', 'График оплат комиссий', 'dateArray')}
-              {renderFormField('earlyRepaymentAllowed', 'Допускается досрочная оплата', 'checkbox')}
-              {renderFormField('notificationPeriodDays', 'Срок уведомления (дней)', 'number')}
-              {renderFormField('earlyRepaymentMoratorium', 'Мораторий на досрочную оплату', 'checkbox')}
-              {renderFormField('penaltyRate', 'Уровень штрафных санкций (%)', 'number')}
-              {renderFormField('penaltyIndexation', 'Индексация размера неустойки', 'checkbox')}
-              {renderFormField('sublimitVolumeAndAvailability', 'Объем и доступность сублимита', 'number')}
-              {renderFormField('finalCreditQualityCategory', 'Итоговая категория качества кредита', 'select', ['Хорошее', 'Проблемное', 'Просроченное'])}
-              {renderFormField('dispositionExecutorName', 'Исполнитель распоряжения (ФИО)', 'text')}
-              {renderFormField('authorizedSignatory', 'Авторизованное лицо (ФИО)', 'text')}
-            </CardContent>
-            <CardFooter className="mt-4 pt-4 border-t flex flex-col sm:flex-row justify-end gap-2">
-                <Button type="button" variant="outline" onClick={handleExportJson} disabled={isLoading || isEditing}>
-                    <Download className="mr-2 h-4 w-4" /> Экспорт в JSON
-                </Button>
-                <Button type="button" variant="outline" onClick={handleExportPdf} disabled={isLoading || isEditing}>
-                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    <Download className="mr-2 h-4 w-4" /> Экспорт в PDF
-                </Button>
-            </CardFooter>
-          </Card>
-        </form>
+        <Form {...form}> {/* FormProvider wrapper */}
+          <form onSubmit={form.handleSubmit(handleSaveEdits)}>
+            <Card id="disposition-card-view" className="mt-4 shadow-xl rounded-xl">
+              <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                      <CardTitle className="text-xl">Проект распоряжения</CardTitle>
+                      <CardDescription>Проверьте и при необходимости отредактируйте извлеченные данные.</CardDescription>
+                  </div>
+                  {!isEditing ? (
+                      <Button type="button" variant="outline" onClick={() => setIsEditing(true)} disabled={isLoading}>
+                          <Edit3 className="mr-2 h-4 w-4" /> Редактировать
+                      </Button>
+                  ) : (
+                      <Button type="submit" variant="default" disabled={isLoading}>
+                          <Save className="mr-2 h-4 w-4" /> Сохранить изменения
+                      </Button>
+                  )}
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-0.5">
+                {renderFormField('statementNumber', 'Номер заявления', 'text')}
+                {renderFormField('statementDate', 'Дата заявления', 'date')}
+                {renderFormField('borrowerName', 'Название заемщика', 'text')}
+                {renderFormField('borrowerInn', 'ИНН заемщика', 'text')}
+                {renderFormField('contractNumber', 'Номер договора', 'text')}
+                {renderFormField('contractDate', 'Дата договора', 'date')}
+                {renderFormField('creditType', 'Вид кредитования', 'select', ['Кредитная линия', 'Возобновляемая кредитная линия'])}
+                {renderFormField('limitCurrency', 'Валюта лимита', 'text')}
+                {renderFormField('contractAmount', 'Сумма договора', 'number')}
+                {renderFormField('borrowerAccountNumber', 'Расчётный счёт заемщика', 'text')}
+                {renderFormField('enterpriseCategory', 'Категория предприятия', 'select', ['Среднее', 'Малое', 'Микро'])}
+                {renderFormField('creditCommitteeDecision', 'Решение кредитного комитета', 'checkbox')}
+                {renderFormField('subsidyAgent', 'Агент субсидии', 'text')}
+                {renderFormField('notesAndSpecialConditions', 'Примечания и особые условия', 'textarea')}
+                {renderFormField('assetBusinessModel', 'Бизнес-модель активов', 'select', ['Удерживать для продажи', 'Иное'])}
+                {renderFormField('marketTransaction', 'Рыночность сделки', 'select', ['Да', 'Нет', 'Не применимо'])}
+                {renderFormField('commissionRate', 'Размер комиссии', 'number')}
+                {renderFormField('commissionPaymentSchedule', 'График оплат комиссий', 'dateArray')}
+                {renderFormField('earlyRepaymentAllowed', 'Допускается досрочная оплата', 'checkbox')}
+                {renderFormField('notificationPeriodDays', 'Срок уведомления (дней)', 'number')}
+                {renderFormField('earlyRepaymentMoratorium', 'Мораторий на досрочную оплату', 'checkbox')}
+                {renderFormField('penaltyRate', 'Уровень штрафных санкций (%)', 'number')}
+                {renderFormField('penaltyIndexation', 'Индексация размера неустойки', 'checkbox')}
+                {renderFormField('sublimitVolumeAndAvailability', 'Объем и доступность сублимита', 'number')}
+                {renderFormField('finalCreditQualityCategory', 'Итоговая категория качества кредита', 'select', ['Хорошее', 'Проблемное', 'Просроченное'])}
+                {renderFormField('dispositionExecutorName', 'Исполнитель распоряжения (ФИО)', 'text')}
+                {renderFormField('authorizedSignatory', 'Авторизованное лицо (ФИО)', 'text')}
+              </CardContent>
+              <CardFooter className="mt-4 pt-4 border-t flex flex-col sm:flex-row justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={handleExportJson} disabled={isLoading || isEditing}>
+                      <Download className="mr-2 h-4 w-4" /> Экспорт в JSON
+                  </Button>
+                  <Button type="button" variant="outline" onClick={handleExportPdf} disabled={isLoading || isEditing}>
+                      {isLoading && !fileDataUri && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {/* Adjusted loader condition for export */}
+                      <Download className="mr-2 h-4 w-4" /> Экспорт в PDF
+                  </Button>
+              </CardFooter>
+            </Card>
+          </form>
+        </Form> 
       )}
     </div>
   );
 }
 
+    
