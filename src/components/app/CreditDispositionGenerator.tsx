@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { ChangeEvent } from 'react';
@@ -102,37 +101,6 @@ const CreditDispositionCardZodSchemaClient = z.object({
 
 type FormValues = z.infer<typeof CreditDispositionCardZodSchemaClient>; 
 
-// Helper function to format values for PDF display
-const formatForDisplay = (value: any, type: 'date' | 'boolean' | 'currency' | 'percent' | 'string' | 'number' = 'string'): string => {
-    if (value === undefined || value === null || String(value).trim() === '') {
-        return 'Не указано';
-    }
-    if (type === 'date') {
-        if (value instanceof Date && isValid(value)) {
-            return format(value, "dd.MM.yyyy", { locale: ru });
-        }
-        // Attempt to parse if it's a string that might be a date
-        if (typeof value === 'string') {
-            const parsed = parseDateSafe(value); // Try ISO first
-            if (parsed && isValid(parsed)) return format(parsed, "dd.MM.yyyy", { locale: ru });
-        }
-        return String(value); // Fallback
-    }
-    if (type === 'boolean') {
-        return value ? 'Да' : 'Нет';
-    }
-    if (type === 'currency' && typeof value === 'number') { 
-        return `${value.toLocaleString('ru-RU')} ${ (form.getValues('limitCurrency') || 'RUB')}`; 
-    }
-    if (type === 'percent' && typeof value === 'number') {
-        return `${value.toLocaleString('ru-RU')}%`;
-    }
-    if (type === 'number' && typeof value === 'number') { 
-        return value.toLocaleString('ru-RU');
-    }
-    return String(value);
-};
-
 const parseDateSafe = (dateInput: any): Date | undefined => {
     if (!dateInput) return undefined;
     if (dateInput instanceof Date && isValid(dateInput)) return dateInput;
@@ -158,27 +126,67 @@ const parseDateSafe = (dateInput: any): Date | undefined => {
   
 const parseNumberSafe = (value: any): number | null => {
     if (value === null || value === undefined || String(value).trim() === "") return null;
-    const num = parseFloat(String(value).replace(/,/g, '.').replace(/\s/g, '')); // Handle comma as decimal and remove spaces
+    // Allow for both comma and dot as decimal separators, remove spaces.
+    const numStr = String(value).replace(/\s/g, '').replace(',', '.');
+    const num = parseFloat(numStr);
     return isNaN(num) ? null : num;
 };
+
+
+// Make form global for PDF currency rendering
+let form: ReturnType<typeof useForm<FormValues>>;
+
+
+// Helper function to format values for PDF display
+const formatForDisplay = (value: any, type: 'date' | 'boolean' | 'currency' | 'percent' | 'string' | 'number' = 'string', currencySymbol?: string): string => {
+    if (value === undefined || value === null || String(value).trim() === '') {
+        return 'Не указано';
+    }
+    if (type === 'date') {
+        if (value instanceof Date && isValid(value)) {
+            return format(value, "dd.MM.yyyy", { locale: ru });
+        }
+        const parsed = parseDateSafe(value);
+        if (parsed && isValid(parsed)) return format(parsed, "dd.MM.yyyy", { locale: ru });
+        return String(value); // Fallback
+    }
+    if (type === 'boolean') {
+        return value ? 'Да' : 'Нет';
+    }
+    const currentCurrency = currencySymbol || form.getValues('limitCurrency') || 'RUB';
+    if (type === 'currency' && typeof value === 'number') { 
+        return `${value.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${currentCurrency}`; 
+    }
+    if (type === 'percent' && typeof value === 'number') {
+        return `${value.toLocaleString('ru-RU')}%`;
+    }
+    if (type === 'number' && typeof value === 'number') { 
+        return value.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+    return String(value);
+};
+
 
 const renderPdfHtml = (data: FormValues): string => {
     let html = `<div id="pdf-render-content-inner" style="font-family: Arial, sans-serif; font-size: 10pt; color: #333; padding: 15mm; width: 180mm; background-color: #fff;">`;
     html += `<h1 style="font-size: 16pt; color: #003366; margin-bottom: 10mm; border-bottom: 1px solid #ccc; padding-bottom: 3mm; text-align: center;">Распоряжение о постановке на учет кредитного договора</h1>`;
 
     const section = (title: string, contentHtml: string) => {
+        if (!contentHtml.trim() || contentHtml.includes('<p style="margin-bottom: 2mm; display: flex;"><strong style="min-width: 180px; display: inline-block; color: #555;">Условия:</strong> <span style="flex-grow: 1; word-break: break-word;">Не указано</span></p>') && !contentHtml.replace('<p style="margin-bottom: 2mm; display: flex;"><strong style="min-width: 180px; display: inline-block; color: #555;">Условия:</strong> <span style="flex-grow: 1; word-break: break-word;">Не указано</span></p>', '').trim()) {
+            // If section is empty or only contains "Условия: Не указано", don't render it.
+            // This is a bit hacky, better to check if all values in contentHtml are "Не указано"
+           // return '';
+        }
         return `<h2 style="font-size: 12pt; color: #004080; margin-top: 8mm; margin-bottom: 4mm; border-bottom: 1px solid #eee; padding-bottom: 2mm;">${title}</h2>${contentHtml}`;
     };
 
     const field = (label: string, value: any, type: 'date' | 'boolean' | 'currency' | 'percent' | 'string' | 'number' = 'string') => {
         const formattedValue = formatForDisplay(value, type);
-        // Avoid printing "Не указано: Не указано" by checking formattedValue directly
         const displayValue = (formattedValue === 'Не указано' && (value === undefined || value === null || String(value).trim() === '')) ? 'Не указано' : formattedValue;
-
         return `<p style="margin-bottom: 2mm; display: flex;"><strong style="min-width: 180px; display: inline-block; color: #555;">${label}:</strong> <span style="flex-grow: 1; word-break: break-word;">${displayValue}</span></p>`;
     };
     
-    const formatOptionalNumber = (val: number | null | undefined) => val === null || val === undefined ? undefined : val;
+    const formatOptionalNumberForPdf = (val: number | null | undefined) => val === null || val === undefined ? undefined : val;
 
 
     let generalHtml = field('Номер заявления', data.statementNumber) +
@@ -189,7 +197,7 @@ const renderPdfHtml = (data: FormValues): string => {
                       field('Дата договора', data.contractDate, 'date') +
                       field('Вид кредитования', data.creditType) +
                       field('Валюта лимита/договора', data.limitCurrency) +
-                      field('Сумма договора/лимита', formatOptionalNumber(data.contractAmount), data.limitCurrency ? 'currency' : 'number') + 
+                      field('Сумма договора/лимита', formatOptionalNumberForPdf(data.contractAmount), data.limitCurrency ? 'currency' : 'number') + 
                       field('Код подразделения банка', data.bankUnitCode) +
                       field('Срок действия договора', data.contractTerm) +
                       field('Расчётный счёт заемщика', data.borrowerAccountNumber) +
@@ -218,32 +226,37 @@ const renderPdfHtml = (data: FormValues): string => {
     html += section('Комиссионные сборы по договору', commissionHtml);
 
     let earlyRepaymentHtml = '';
-    if (data.earlyRepaymentConditions) {
+    if (data.earlyRepaymentConditions && Object.values(data.earlyRepaymentConditions).some(v => v !== undefined && v !== null && v !== '' && v !== false)) {
         earlyRepaymentHtml += field('Обязательное досрочное погашение разрешено', data.earlyRepaymentConditions.mandatoryEarlyRepaymentAllowed, 'boolean') +
                              field('Добровольное досрочное погашение разрешено', data.earlyRepaymentConditions.voluntaryEarlyRepaymentAllowed, 'boolean') +
                              field('Источники финансирования досрочных выплат', data.earlyRepaymentConditions.earlyRepaymentFundingSources) +
-                             field('Комиссия за досрочные выплаты (%)', formatOptionalNumber(data.earlyRepaymentConditions.earlyRepaymentCommissionRate), 'percent') +
+                             field('Комиссия за досрочные выплаты (%)', formatOptionalNumberForPdf(data.earlyRepaymentConditions.earlyRepaymentCommissionRate), 'percent') +
                              field('Очередность погашения ОД и процентов', data.earlyRepaymentConditions.principalAndInterestRepaymentOrder) +
                              field('Мораторий на досрочное погашение (детали)', data.earlyRepaymentConditions.earlyRepaymentMoratoriumDetails);
+         html += section('Условия досрочного погашения', earlyRepaymentHtml);
+    } else {
+         html += section('Условия досрочного погашения', field('Условия', 'Не указаны'));
     }
-    html += section('Условия досрочного погашения', earlyRepaymentHtml || field('Условия', 'Не указаны'));
+
 
     let penaltyHtml = '';
-    if (data.penaltySanctions) {
+    if (data.penaltySanctions && Object.values(data.penaltySanctions).some(v => v !== undefined && v !== null && v !== '' && v !== false)) {
         penaltyHtml += field('Штраф за просрочку ОД', data.penaltySanctions.latePrincipalPaymentPenalty) +
                       field('Штраф за просрочку процентов', data.penaltySanctions.lateInterestPaymentPenalty) +
                       field('Штраф за неоплату комиссий', data.penaltySanctions.lateCommissionPaymentPenalty) +
                       field('Индексация неустойки', data.penaltySanctions.penaltyIndexation, 'boolean');
+        html += section('Штрафные санкции за просрочку платежа', penaltyHtml);
+    } else {
+         html += section('Штрафные санкции за просрочку платежа', field('Санкции', 'Не указаны'));
     }
-    html += section('Штрафные санкции за просрочку платежа', penaltyHtml || field('Санкции', 'Не указаны'));
     
     if (data.sublimitDetails && data.sublimitDetails.length > 0) {
         let sublimitsSectionHtml = '';
         data.sublimitDetails.forEach((sl, index) => {
             sublimitsSectionHtml += `<div style="border: 1px solid #eee; padding: 3mm; margin-bottom: 3mm; border-radius: 3px;">`;
             sublimitsSectionHtml += `<h3 style="font-size: 11pt; color: #0055A4; margin-top: 0; margin-bottom: 2mm;">Сублимит ${index + 1}</h3>`;
-            sublimitsSectionHtml += field('Сумма', formatOptionalNumber(sl.sublimitAmount), sl.sublimitCurrency ? 'currency' : 'number') + 
-                                   field('Валюта', sl.sublimitCurrency) +
+            sublimitsSectionHtml += field('Сумма', formatOptionalNumberForPdf(sl.sublimitAmount), 'currency', sl.sublimitCurrency || data.limitCurrency) + 
+                                   field('Валюта', sl.sublimitCurrency || data.limitCurrency) + // Fallback to main currency
                                    field('Период доступности', sl.sublimitAvailabilityPeriod) +
                                    field('Дата завершения', sl.sublimitExpiryDate, 'date') +
                                    field('Цель', sl.sublimitPurpose) +
@@ -257,16 +270,19 @@ const renderPdfHtml = (data: FormValues): string => {
     }
 
     let financialIndicatorsHtml = '';
-    if (data.financialIndicatorsAndCalculations) {
-        financialIndicatorsHtml += field('Ставка начисленных процентов (%)', formatOptionalNumber(data.financialIndicatorsAndCalculations.accruedInterestRate), 'percent') +
-                                  field('Ставка капитализированных процентов (%)', formatOptionalNumber(data.financialIndicatorsAndCalculations.capitalizedInterestRate), 'percent') +
+    if (data.financialIndicatorsAndCalculations && Object.values(data.financialIndicatorsAndCalculations).some(v => v !== undefined && v !== null && v !== '')) {
+        financialIndicatorsHtml += field('Ставка начисленных процентов (%)', formatOptionalNumberForPdf(data.financialIndicatorsAndCalculations.accruedInterestRate), 'percent') +
+                                  field('Ставка капитализированных процентов (%)', formatOptionalNumberForPdf(data.financialIndicatorsAndCalculations.capitalizedInterestRate), 'percent') +
                                   field('Правила расчета начисленных процентов', data.financialIndicatorsAndCalculations.accruedInterestCalculationRules) +
                                   field('Регламент уплаты процентов', data.financialIndicatorsAndCalculations.interestPaymentRegulations) +
                                   field('Параметры резервирования', data.financialIndicatorsAndCalculations.debtAndCommissionReservingParams) +
                                   field('Коды страховых продуктов', data.financialIndicatorsAndCalculations.insuranceProductCodes) +
                                   field('Особые фин. условия договора', data.financialIndicatorsAndCalculations.specialContractConditions);
+        html += section('Дополнительные финансовые показатели и регламенты расчетов', financialIndicatorsHtml);
+    } else {
+         html += section('Дополнительные финансовые показатели и регламенты расчетов', field('Показатели', 'Не указаны'));
     }
-    html += section('Дополнительные финансовые показатели и регламенты расчетов', financialIndicatorsHtml || field('Показатели', 'Не указаны'));
+
 
     let adminHtml = field('Итоговая категория качества кредита', data.finalCreditQualityCategory) +
                     field('Исполнитель распоряжения (ФИО)', data.dispositionExecutorName) +
@@ -278,8 +294,6 @@ const renderPdfHtml = (data: FormValues): string => {
     return html;
 };
 
-// Make form global for PDF currency rendering
-let form: ReturnType<typeof useForm<FormValues>>;
 
 export default function CreditDispositionGenerator() {
   const [file, setFile] = useState<File | null>(null);
@@ -315,8 +329,8 @@ export default function CreditDispositionGenerator() {
         commissionCalculationMethod: '',
         commissionPaymentSchedule: [],
         earlyRepaymentConditions: { 
-            mandatoryEarlyRepaymentAllowed: false, 
-            voluntaryEarlyRepaymentAllowed: false,
+            mandatoryEarlyRepaymentAllowed: undefined, 
+            voluntaryEarlyRepaymentAllowed: undefined,
             earlyRepaymentFundingSources: '',
             earlyRepaymentCommissionRate: null,
             principalAndInterestRepaymentOrder: '',
@@ -326,7 +340,7 @@ export default function CreditDispositionGenerator() {
             latePrincipalPaymentPenalty: '',
             lateInterestPaymentPenalty: '',
             lateCommissionPaymentPenalty: '',
-            penaltyIndexation: false,
+            penaltyIndexation: undefined,
          },
         sublimitDetails: [],
         financialIndicatorsAndCalculations: {
@@ -352,102 +366,124 @@ export default function CreditDispositionGenerator() {
 
   useEffect(() => {
     if (extractedData?.dispositionCard) {
-      const rawDataFromAI = extractedData.dispositionCard;
-      const defaultValuesFromForm = form.formState.defaultValues || {};
-      
-      const processedFormData: Partial<FormValues> = {
-        ...defaultValuesFromForm, 
-        earlyRepaymentConditions: { ...(defaultValuesFromForm.earlyRepaymentConditions || {}), ...rawDataFromAI.earlyRepaymentConditions },
-        penaltySanctions: { ...(defaultValuesFromForm.penaltySanctions || {}), ...rawDataFromAI.penaltySanctions },
-        financialIndicatorsAndCalculations: { ...(defaultValuesFromForm.financialIndicatorsAndCalculations || {}), ...rawDataFromAI.financialIndicatorsAndCalculations },
-        sublimitDetails: [], 
-      };
+        const rawDataFromAI = extractedData.dispositionCard;
+        const defaultValuesFromForm = form.formState.defaultValues || {};
 
-      (Object.keys(rawDataFromAI) as Array<keyof CreditDispositionCardData>).forEach(key => {
-        const value = rawDataFromAI[key];
-        if (key === 'statementDate' || key === 'contractDate') {
-          const parsedDate = parseDateSafe(value);
-          (processedFormData as any)[key] = parsedDate;
-          if (value && !parsedDate) {
+        const processedFormData: Partial<FormValues> = {
+            ...defaultValuesFromForm,
+        };
+
+        // Directly map top-level fields, parsing numbers and dates
+        (Object.keys(rawDataFromAI) as Array<keyof CreditDispositionCardData>).forEach(key => {
+            const value = rawDataFromAI[key];
+            if (value === undefined || value === null) {
+                 (processedFormData as any)[key] = defaultValuesFromForm[key as keyof typeof defaultValuesFromForm]; // Keep default if AI returns nothing
+                 return;
+            }
+
+            switch (key) {
+                case 'statementDate':
+                case 'contractDate':
+                    const parsedDate = parseDateSafe(value);
+                    (processedFormData as any)[key] = parsedDate;
+                    if (value && !parsedDate) {
+                        toast({
+                            title: "Предупреждение: Формат даты",
+                            description: `Не удалось распознать дату для '${key}'. (Получено: "${value}")`,
+                            variant: "default",
+                            duration: 7000,
+                        });
+                    }
+                    break;
+                case 'contractAmount':
+                    processedFormData.contractAmount = parseNumberSafe(value);
+                    break;
+                case 'commissionPaymentSchedule':
+                    if (Array.isArray(value)) {
+                        processedFormData.commissionPaymentSchedule = value.map(d => parseDateSafe(d)).filter(d => d instanceof Date && isValid(d)) as Date[];
+                    }
+                    break;
+                case 'sublimitDetails':
+                    if (Array.isArray(value)) {
+                        processedFormData.sublimitDetails = value.map(sl => {
+                            const parsedSublimitDate = parseDateSafe(sl.sublimitExpiryDate);
+                            if (sl.sublimitExpiryDate && !parsedSublimitDate) {
+                                toast({
+                                    title: "Предупреждение: Формат даты сублимита",
+                                    description: `Не удалось распознать дату для сублимита. (Получено: "${sl.sublimitExpiryDate}")`,
+                                    variant: "default",
+                                    duration: 7000,
+                                });
+                            }
+                            return {
+                                ...sl,
+                                sublimitAmount: parseNumberSafe(sl.sublimitAmount),
+                                sublimitExpiryDate: parsedSublimitDate,
+                            };
+                        });
+                    }
+                    break;
+                case 'earlyRepaymentConditions':
+                     processedFormData.earlyRepaymentConditions = {
+                        ...(defaultValuesFromForm.earlyRepaymentConditions || {}),
+                        ...(value as object),
+                        earlyRepaymentCommissionRate: parseNumberSafe((value as any)?.earlyRepaymentCommissionRate),
+                    };
+                    break;
+                case 'penaltySanctions':
+                    processedFormData.penaltySanctions = {
+                        ...(defaultValuesFromForm.penaltySanctions || {}),
+                        ...(value as object),
+                    };
+                    break;
+                case 'financialIndicatorsAndCalculations':
+                    processedFormData.financialIndicatorsAndCalculations = {
+                        ...(defaultValuesFromForm.financialIndicatorsAndCalculations || {}),
+                        ...(value as object),
+                        accruedInterestRate: parseNumberSafe((value as any)?.accruedInterestRate),
+                        capitalizedInterestRate: parseNumberSafe((value as any)?.capitalizedInterestRate),
+                    };
+                    break;
+                default:
+                    // Handle enums to default to empty string if AI returns undefined/null but schema has '' as option
+                    const fieldDefinition = CreditDispositionCardZodSchemaClient.shape[key as keyof typeof CreditDispositionCardZodSchemaClient.shape];
+                    if (fieldDefinition instanceof z.ZodOptional && fieldDefinition._def.innerType instanceof z.ZodEnum) {
+                        if ((value === undefined || value === null) && fieldDefinition._def.innerType._def.values.includes('')) {
+                             (processedFormData as any)[key] = '';
+                        } else {
+                             (processedFormData as any)[key] = value;
+                        }
+                    } else {
+                         (processedFormData as any)[key] = value;
+                    }
+            }
+        });
+        
+        // Ensure nested objects are at least empty objects if not provided by AI or defaults
+        processedFormData.earlyRepaymentConditions = processedFormData.earlyRepaymentConditions || {};
+        processedFormData.penaltySanctions = processedFormData.penaltySanctions || {};
+        processedFormData.financialIndicatorsAndCalculations = processedFormData.financialIndicatorsAndCalculations || {};
+        processedFormData.sublimitDetails = processedFormData.sublimitDetails || [];
+        processedFormData.commissionPaymentSchedule = processedFormData.commissionPaymentSchedule || [];
+
+
+        form.reset(processedFormData as FormValues);
+        setIsEditing(false);
+
+        if (
+            (!rawDataFromAI.borrowerName || rawDataFromAI.borrowerName.trim() === "") &&
+            (!rawDataFromAI.contractNumber || rawDataFromAI.contractNumber.trim() === "") &&
+            (rawDataFromAI.contractAmount === null || rawDataFromAI.contractAmount === undefined)
+        ) {
             toast({
-              title: "Предупреждение о формате даты",
-              description: `Не удалось автоматически распознать дату для поля '${key}'. Пожалуйста, проверьте и установите ее вручную. (Получено: "${value}")`,
-              variant: "default",
-              duration: 7000,
+                title: "Внимание: Низкая точность извлечения",
+                description: "Не удалось извлечь ключевые данные (Имя заемщика, Номер или Сумма договора). Возможно, документ сложный для анализа или имеет нестандартный формат. Пожалуйста, проверьте все поля вручную.",
+                variant: "destructive",
+                duration: 10000,
             });
-          }
-        } else if (key === 'commissionPaymentSchedule' && Array.isArray(value)) {
-          (processedFormData as any)[key] = value.map(d => parseDateSafe(d)).filter(d => d instanceof Date && isValid(d)); 
-        } else if (key === 'sublimitDetails' && Array.isArray(value)) {
-            const parsedSublimits = value.map(sl => {
-                const parsedSublimitDate = parseDateSafe(sl.sublimitExpiryDate);
-                if (sl.sublimitExpiryDate && !parsedSublimitDate) {
-                   toast({
-                     title: "Предупреждение о формате даты сублимита",
-                     description: `Не удалось автоматически распознать дату завершения для одного из сублимитов. Пожалуйста, проверьте и установите ее вручную. (Получено: "${sl.sublimitExpiryDate}")`,
-                     variant: "default",
-                     duration: 7000,
-                   });
-                }
-                return {
-                    ...sl,
-                    sublimitAmount: parseNumberSafe(sl.sublimitAmount),
-                    sublimitExpiryDate: parsedSublimitDate
-                };
-            });
-            (processedFormData as any)[key] = parsedSublimits;
-        } else if (key === 'contractAmount' || key === 'earlyRepaymentConditions.earlyRepaymentCommissionRate' || key === 'financialIndicatorsAndCalculations.accruedInterestRate' || key === 'financialIndicatorsAndCalculations.capitalizedInterestRate' ) {
-             // Handle nested number fields correctly by parsing them
-             if (key === 'contractAmount') {
-                 processedFormData.contractAmount = parseNumberSafe(value);
-             } else if (key === 'earlyRepaymentConditions.earlyRepaymentCommissionRate' && processedFormData.earlyRepaymentConditions) {
-                 processedFormData.earlyRepaymentConditions.earlyRepaymentCommissionRate = parseNumberSafe(value);
-             } else if (key === 'financialIndicatorsAndCalculations.accruedInterestRate' && processedFormData.financialIndicatorsAndCalculations) {
-                processedFormData.financialIndicatorsAndCalculations.accruedInterestRate = parseNumberSafe(value);
-             } else if (key === 'financialIndicatorsAndCalculations.capitalizedInterestRate' && processedFormData.financialIndicatorsAndCalculations) {
-                processedFormData.financialIndicatorsAndCalculations.capitalizedInterestRate = parseNumberSafe(value);
-             }
-        } else if (key === 'earlyRepaymentConditions' && typeof value === 'object' && value !== null) {
-             processedFormData.earlyRepaymentConditions = {
-                ...(defaultValuesFromForm.earlyRepaymentConditions || {}),
-                ...value,
-                earlyRepaymentCommissionRate: parseNumberSafe((value as any).earlyRepaymentCommissionRate)
-             };
-        } else if (key === 'financialIndicatorsAndCalculations' && typeof value === 'object' && value !== null) {
-             processedFormData.financialIndicatorsAndCalculations = {
-                ...(defaultValuesFromForm.financialIndicatorsAndCalculations || {}),
-                ...value,
-                accruedInterestRate: parseNumberSafe((value as any).accruedInterestRate),
-                capitalizedInterestRate: parseNumberSafe((value as any).capitalizedInterestRate),
-             };
-        } else if (key === 'penaltySanctions' && typeof value === 'object' && value !== null) {
-             processedFormData.penaltySanctions = {
-                ...(defaultValuesFromForm.penaltySanctions || {}),
-                ...value,
-             };
-        } else {
-          const fieldDefinition = CreditDispositionCardZodSchemaClient.shape[key as keyof typeof CreditDispositionCardZodSchemaClient.shape];
-          if (fieldDefinition instanceof z.ZodOptional && fieldDefinition._def.innerType instanceof z.ZodEnum) {
-            (processedFormData as any)[key] = value ?? '';
-          } else {
-            (processedFormData as any)[key] = value;
-          }
         }
-      });
-      
-      form.reset(processedFormData as FormValues);
-      setIsEditing(false); 
-      if (!rawDataFromAI.borrowerName && !rawDataFromAI.contractNumber && (rawDataFromAI.contractAmount === null || rawDataFromAI.contractAmount === undefined)) {
-         toast({
-            title: "Внимание: Низкая точность извлечения",
-            description: "Не удалось извлечь ключевые данные (Имя заемщика, Номер или Сумма договора). Возможно, документ сложный для анализа или имеет нестандартный формат. Пожалуйста, проверьте все поля вручную.",
-            variant: "destructive",
-            duration: 10000, 
-          });
-      }
-
     }
-  }, [extractedData, form, toast]);
+}, [extractedData, form, toast]);
 
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -626,13 +662,13 @@ export default function CreditDispositionGenerator() {
         control={control} 
         name={fieldName as keyof FormValues} 
         render={({ field }) => {
-            let fieldValue = field.value;
+            let fieldValueForDisplay = field.value;
              if (type === "text" || type === "textarea") {
-                fieldValue = field.value === undefined || field.value === null ? "" : field.value;
+                fieldValueForDisplay = field.value === undefined || field.value === null ? "" : field.value;
             } else if (type === "number") {
-                 fieldValue = field.value === undefined || field.value === null || String(field.value).trim() === "" ? "" : String(field.value);
+                 fieldValueForDisplay = field.value === undefined || field.value === null || String(field.value).trim() === "" ? "" : String(field.value);
             } else if (type === 'checkbox') {
-                fieldValue = field.value === undefined || field.value === null ? false : field.value;
+                fieldValueForDisplay = field.value === undefined || field.value === null ? false : field.value;
             }
 
             return (
@@ -642,11 +678,11 @@ export default function CreditDispositionGenerator() {
                 <Textarea 
                     id={fieldName} 
                     {...form.register(fieldName as keyof FormValues)} 
-                    defaultValue={fieldValue as string} 
+                    defaultValue={fieldValueForDisplay as string} 
                     readOnly={readOnly} 
                     rows={3} 
                     className={cn("mt-0.5", commonInputClass)} 
-                    placeholder={(readOnly && (fieldValue === undefined || fieldValue === null || String(fieldValue).trim() === '') ? 'Нет данных' : undefined)}
+                    placeholder={(readOnly && (fieldValueForDisplay === undefined || fieldValueForDisplay === null || String(fieldValueForDisplay).trim() === '') ? 'Нет данных' : undefined)}
                 />
                 ) : type === 'select' && options ? (
                 <Controller
@@ -671,7 +707,7 @@ export default function CreditDispositionGenerator() {
                  <div className="mt-0.5 flex items-center h-10">
                     <Checkbox 
                         id={fieldName} 
-                        checked={fieldValue as boolean} 
+                        checked={fieldValueForDisplay as boolean} 
                         onCheckedChange={(checkedState) => field.onChange(checkedState)}
                         disabled={readOnly}
                         className={readOnly ? "cursor-default" : ""}
@@ -751,16 +787,26 @@ export default function CreditDispositionGenerator() {
                 ) : ( 
                 <Input 
                     id={fieldName} 
-                    type={type === 'number' ? 'number' : 'text'} 
-                    step={type === 'number' ? 'any' : undefined}
+                    type={type === 'number' ? 'text' : 'text'} // Use text for number to allow formatting and better control
                     {...form.register(fieldName as keyof FormValues, { 
-                        valueAsNumber: type === 'number',
-                        setValueAs: type === 'number' ? (v: any) => (v === "" || v === null || v === undefined ? null : parseFloat(String(v).replace(/,/g, '.'))) : undefined 
+                       setValueAs: type === 'number' ? (v: any) => {
+                            if (v === "" || v === null || v === undefined) return null;
+                            const parsed = parseFloat(String(v).replace(/,/g, '.').replace(/\s/g, ''));
+                            return isNaN(parsed) ? null : parsed;
+                        } : undefined
                     })} 
-                    defaultValue={fieldValue as any} 
+                    defaultValue={fieldValueForDisplay as any}
+                    onBlur={(e) => { // Format on blur if it's a number for display
+                        if (type === 'number' && e.target.value) {
+                            const num = parseNumberSafe(e.target.value);
+                            // e.target.value = num !== null ? num.toLocaleString('ru-RU') : ''; // This causes issues with react-hook-form state
+                            // form.setValue(fieldName as keyof FormValues, num as any); // Already handled by setValueAs
+                        }
+                        field.onBlur(); // Call original onBlur
+                    }}
                     readOnly={readOnly} 
                     className={cn("mt-0.5", commonInputClass)} 
-                    placeholder={readOnly && (fieldValue === undefined || fieldValue === null || String(fieldValue).trim() === '') ? 'Нет данных' : undefined}
+                    placeholder={readOnly && (fieldValueForDisplay === undefined || fieldValueForDisplay === null || String(fieldValueForDisplay).trim() === '') ? 'Нет данных' : undefined}
                 />
                 )}
                 {description && <FormDescription className="text-xs mt-1">{description}</FormDescription>}
@@ -826,7 +872,7 @@ export default function CreditDispositionGenerator() {
                       <CardDescription>{isEditing ? "Редактируйте извлеченные данные." : "Проверьте извлеченные данные. Нажмите 'Редактировать' для внесения изменений."}</CardDescription>
                   </div>
                   {!isEditing ? (
-                      <Button type="button" variant="outline" onClick={() => setIsEditing(true)} disabled={isLoading || (!extractedData && !Object.values(form.getValues()).some(v => v !== null && v !== undefined && v !== ''))}>
+                      <Button type="button" variant="outline" onClick={() => setIsEditing(true)} disabled={isLoading || (!extractedData && !Object.values(form.getValues()).some(v => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0) && !(typeof v === 'object' && Object.keys(v).length === 0)  ))}>
                           <Edit3 className="mr-2 h-4 w-4" /> Редактировать
                       </Button>
                   ) : (
@@ -927,7 +973,7 @@ export default function CreditDispositionGenerator() {
                             className="mt-2"
                             onClick={() => appendSublimit({ 
                                 sublimitAmount: null, 
-                                sublimitCurrency: 'RUB', 
+                                sublimitCurrency: form.getValues('limitCurrency') || 'RUB', // Default to main currency
                                 sublimitAvailabilityPeriod: '', 
                                 sublimitExpiryDate: undefined, 
                                 sublimitPurpose: '', 
