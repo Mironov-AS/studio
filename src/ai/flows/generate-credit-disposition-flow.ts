@@ -241,16 +241,19 @@ const generateCreditDispositionFlow = ai.defineFlow(
         const output = result.output;
 
         if (output && output.dispositionCard) {
+          // Ensure nested objects and arrays are initialized if AI omits them
           output.dispositionCard.earlyRepaymentConditions = output.dispositionCard.earlyRepaymentConditions || {};
           output.dispositionCard.penaltySanctions = output.dispositionCard.penaltySanctions || {};
           output.dispositionCard.financialIndicatorsAndCalculations = output.dispositionCard.financialIndicatorsAndCalculations || {};
           output.dispositionCard.sublimitDetails = output.dispositionCard.sublimitDetails || [];
           output.dispositionCard.commissionPaymentSchedule = output.dispositionCard.commissionPaymentSchedule || [];
           
+          // Calculate contractAmount from sublimits if AI didn't extract it
           if ((output.dispositionCard.contractAmount === null || output.dispositionCard.contractAmount === undefined) &&
               output.dispositionCard.sublimitDetails && output.dispositionCard.sublimitDetails.length > 0) {
             let sumOfSublimits = 0;
             for (const sl of output.dispositionCard.sublimitDetails) {
+              // Ensure sublimitAmount is a number before adding
               const amount = typeof sl.sublimitAmount === 'number' ? sl.sublimitAmount : 0;
               sumOfSublimits += amount;
             }
@@ -260,12 +263,12 @@ const generateCreditDispositionFlow = ai.defineFlow(
             }
           }
           
+          // Retry if critical fields are missing on early attempts
           if (
             attempt < MAX_RETRIES -1 && 
             (!output.dispositionCard.borrowerName || 
              !output.dispositionCard.contractNumber || 
-             output.dispositionCard.contractAmount === null || 
-             output.dispositionCard.contractAmount === undefined
+             (output.dispositionCard.contractAmount === null || output.dispositionCard.contractAmount === undefined) // Check if it's still missing after potential calculation
             )
           ) {
             console.warn(`[Flow] Attempt ${attempt + 1}: Critical fields (borrowerName, contractNumber, or contractAmount) missing. Retrying...`);
@@ -278,7 +281,7 @@ const generateCreditDispositionFlow = ai.defineFlow(
           return output; 
         }
         
-        lastErrorEncountered = new Error(`AI did not return expected dispositionCard structure on attempt ${attempt + 1}.`);
+        lastErrorEncountered = new Error(`AI did not return expected dispositionCard structure on attempt ${attempt + 1}. Output received: ${JSON.stringify(output)}`);
         if (attempt === MAX_RETRIES - 1) {
            break; 
         }
@@ -286,11 +289,12 @@ const generateCreditDispositionFlow = ai.defineFlow(
       } catch (e: any) {
         lastErrorEncountered = e; 
         let errorMessageDetail = 'Unknown error';
-        if (e && e.message) {
-            errorMessageDetail = String(e.message).toLowerCase();
+        if (e && typeof e.message === 'string') {
+            errorMessageDetail = e.message.toLowerCase();
         } else if (e) {
             try {
-                errorMessageDetail = JSON.stringify(e).toLowerCase();
+                // Attempt to stringify the full error object for more details
+                errorMessageDetail = JSON.stringify(e, Object.getOwnPropertyNames(e)).toLowerCase();
             } catch (jsonError) {
                 errorMessageDetail = 'Error object could not be stringified.';
             }
@@ -299,14 +303,16 @@ const generateCreditDispositionFlow = ai.defineFlow(
         console.error(`[Flow] Attempt ${attempt + 1} caught error: ${errorMessageDetail}`, e);
 
         const isRetryableError = 
-          errorMessageDetail.includes('503') || 
+          errorMessageDetail.includes('503') || // Service Unavailable
           errorMessageDetail.includes('overloaded') || 
           errorMessageDetail.includes('service unavailable') ||
           errorMessageDetail.includes('rate limit') || 
-          errorMessageDetail.includes('resource has been exhausted') || 
-          errorMessageDetail.includes('deadline exceeded') || 
+          errorMessageDetail.includes('resource has been exhausted') || // Common for complex models
+          errorMessageDetail.includes('deadline exceeded') || // Timeout
+          // Do not retry on "internal error" as it's often persistent or a model issue with the prompt
+          // errorMessageDetail.includes('internal error') || 
           errorMessageDetail.includes('try again later') ||
-          errorMessageDetail.includes('429'); 
+          errorMessageDetail.includes('429'); // HTTP 429 Too Many Requests
         
         if (isRetryableError) {
           if (attempt === MAX_RETRIES - 1) {
@@ -316,6 +322,7 @@ const generateCreditDispositionFlow = ai.defineFlow(
           console.warn(`[Flow] Retryable error encountered. Retrying in ${delay/1000}s... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
+          // Non-retryable error
           console.error("[Flow] Non-retryable error in generateCreditDispositionFlow, throwing now:", e);
           throw e; 
         }
@@ -323,12 +330,16 @@ const generateCreditDispositionFlow = ai.defineFlow(
       attempt++;
     }
 
+    // If all retries failed
     let finalErrorMessage = `Не удалось получить корректный ответ от AI для распоряжения после ${MAX_RETRIES} попыток.`;
     if (lastErrorEncountered) {
-        const message = lastErrorEncountered.message || (typeof lastErrorEncountered.toString === 'function' ? lastErrorEncountered.toString() : JSON.stringify(lastErrorEncountered));
+        const message = lastErrorEncountered.message || (typeof lastErrorEncountered.toString === 'function' ? lastErrorEncountered.toString() : JSON.stringify(lastErrorEncountered, Object.getOwnPropertyNames(lastErrorEncountered)));
         finalErrorMessage += ` Последняя ошибка: ${message}`;
     }
     console.error("[Flow] All retries failed for generateCreditDispositionFlow.", finalErrorMessage);
     throw new Error(finalErrorMessage);
   }
 );
+
+
+    
