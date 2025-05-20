@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert } from 'lucide-react'; // Added ShieldCheck, ShieldAlert
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive } from 'lucide-react'; // Added FileArchive
 
 export default function HomePage() {
   const services = [
@@ -33,6 +33,12 @@ export default function HomePage() {
       description: 'Анализ договоров, извлечение условий, событий и формирование распоряжений с помощью AI.',
       href: '/contract-control',
       icon: <FileSignature className="h-8 w-8" />,
+    },
+    {
+      title: 'Распоряжение о постановке на учет (Кредитные договоры)',
+      description: 'Автоматическое формирование проекта распоряжения из PDF кредитного договора с возможностью редактирования и экспорта.',
+      href: '/credit-disposition',
+      icon: <FileArchive className="h-8 w-8" />,
     },
     {
       title: 'Робоэдвайзер по недвижимости (Частный)',
