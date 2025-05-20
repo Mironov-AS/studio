@@ -15,10 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { generateCreditDisposition, type GenerateCreditDispositionInput, type GenerateCreditDispositionOutput, type CreditDispositionCardData, type SublimitDetail } from '@/ai/flows/generate-credit-disposition-flow';
-import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2, CalendarIcon, PackageOpen, CircleDollarSign, TrendingDown, ShieldAlert, Info, BookOpen, Users2, PlusCircle } from 'lucide-react';
+import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2, CalendarIcon as LucideCalendarIcon, PackageOpen, CircleDollarSign, TrendingDown, ShieldAlert, Info, BookOpen, Users2, PlusCircle } from 'lucide-react'; // Renamed CalendarIcon to avoid conflict
 import { exportHtmlElementToPdf } from '@/lib/pdfUtils';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar as ShadCalendar } from "@/components/ui/calendar"; // Renamed Calendar to avoid conflict
 import { format, parseISO, isValid, parse } from "date-fns";
 import { ru } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -36,19 +36,19 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".pdf";
 
-// Schema for individual sublimit details - must match the one in the flow
-const SublimitDetailSchema = z.object({
-  sublimitAmount: z.coerce.number().optional().nullable().describe("Сумма сублимита (только числовое значение)."),
-  sublimitCurrency: z.string().optional().describe("Валюта сублимита."),
-  sublimitAvailabilityPeriod: z.string().optional().describe("Период доступности сублимита."),
-  sublimitExpiryDate: z.union([z.date().nullable(), z.string().optional()]).optional().describe("Дата завершения действия сублимита (ГГГГ-ММ-ДД)."),
-  sublimitPurpose: z.string().optional().describe("Цели, на которые выделялся сублимит."),
-  sublimitInvestmentPhase: z.string().optional().describe("Инвестиционная фаза сублимита."),
-  sublimitRepaymentOrder: z.string().optional().describe("Особенности порядка погашения задолженности по сублимиту."),
+// Zod schema for form validation - This must match the schema in generate-credit-disposition-flow.ts
+// (excluding .describe() calls which are for AI guidance only)
+const SublimitDetailSchemaClient = z.object({
+  sublimitAmount: z.coerce.number().optional().nullable(),
+  sublimitCurrency: z.string().optional(),
+  sublimitAvailabilityPeriod: z.string().optional(),
+  sublimitExpiryDate: z.union([z.date().nullable(), z.string().optional()]).optional(),
+  sublimitPurpose: z.string().optional(),
+  sublimitInvestmentPhase: z.string().optional(),
+  sublimitRepaymentOrder: z.string().optional(),
 });
 
-// Zod schema for form validation - This must match the schema in generate-credit-disposition-flow.ts
-const CreditDispositionCardZodSchema = z.object({
+const CreditDispositionCardZodSchemaClient = z.object({
   statementNumber: z.string().optional(),
   statementDate: z.union([z.date().nullable(), z.string().optional()]).optional(),
   borrowerName: z.string().optional(),
@@ -57,7 +57,7 @@ const CreditDispositionCardZodSchema = z.object({
   contractDate: z.union([z.date().nullable(), z.string().optional()]).optional(),
   creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия', '']).optional(),
   limitCurrency: z.string().optional(),
-  contractAmount: z.coerce.number().optional().nullable().describe('Общая сумма кредита/договора или лимит кредитования (только числовое значение).'),
+  contractAmount: z.coerce.number().optional().nullable(),
   bankUnitCode: z.string().optional(),
   contractTerm: z.string().optional(),
   borrowerAccountNumber: z.string().optional(),
@@ -77,7 +77,7 @@ const CreditDispositionCardZodSchema = z.object({
     earlyRepaymentFundingSources: z.string().optional(),
     earlyRepaymentCommissionRate: z.coerce.number().optional().nullable(),
     principalAndInterestRepaymentOrder: z.string().optional(),
-    earlyRepaymentMoratoriumDetails: z.string().optional().describe("Ограничительные моратории на возможность досрочно погасить долг (описание условий или \"Отсутствует\")."),
+    earlyRepaymentMoratoriumDetails: z.string().optional(),
   }).optional().default({}),
   penaltySanctions: z.object({
     latePrincipalPaymentPenalty: z.string().optional(),
@@ -85,7 +85,7 @@ const CreditDispositionCardZodSchema = z.object({
     lateCommissionPaymentPenalty: z.string().optional(),
     penaltyIndexation: z.boolean().optional(),
   }).optional().default({}),
-  sublimitDetails: z.array(SublimitDetailSchema).optional().default([]),
+  sublimitDetails: z.array(SublimitDetailSchemaClient).optional().default([]),
   financialIndicatorsAndCalculations: z.object({
     accruedInterestRate: z.coerce.number().optional().nullable(),
     capitalizedInterestRate: z.coerce.number().optional().nullable(),
@@ -100,7 +100,7 @@ const CreditDispositionCardZodSchema = z.object({
   authorizedSignatory: z.string().optional(),
 });
 
-type FormValues = z.infer<typeof CreditDispositionCardZodSchema>; 
+type FormValues = z.infer<typeof CreditDispositionCardZodSchemaClient>; 
 
 // Helper function to format values for PDF display
 const formatForDisplay = (value: any, type: 'date' | 'boolean' | 'currency' | 'percent' | 'string' | 'number' = 'string'): string => {
@@ -108,13 +108,23 @@ const formatForDisplay = (value: any, type: 'date' | 'boolean' | 'currency' | 'p
         return 'Не указано';
     }
     if (type === 'date') {
-        return value instanceof Date && isValid(value) ? format(value, "dd.MM.yyyy", { locale: ru }) : String(value);
+        if (value instanceof Date && isValid(value)) {
+            return format(value, "dd.MM.yyyy", { locale: ru });
+        }
+        // Attempt to parse if it's a string that might be a date
+        if (typeof value === 'string') {
+            const parsed = parseISO(value); // Try ISO first
+            if (isValid(parsed)) return format(parsed, "dd.MM.yyyy", { locale: ru });
+            const parsedDDMMYYYY = parse(value, "dd.MM.yyyy", new Date());
+            if (isValid(parsedDDMMYYYY)) return format(parsedDDMMYYYY, "dd.MM.yyyy", { locale: ru });
+        }
+        return String(value); // Fallback
     }
     if (type === 'boolean') {
         return value ? 'Да' : 'Нет';
     }
     if (type === 'currency' && typeof value === 'number') { 
-        return `${value.toLocaleString('ru-RU')} RUB`; 
+        return `${value.toLocaleString('ru-RU')} ${ (form.getValues('limitCurrency') || 'RUB')}`; 
     }
     if (type === 'percent' && typeof value === 'number') {
         return `${value.toLocaleString('ru-RU')}%`;
@@ -135,7 +145,11 @@ const renderPdfHtml = (data: FormValues): string => {
     };
 
     const field = (label: string, value: any, type: 'date' | 'boolean' | 'currency' | 'percent' | 'string' | 'number' = 'string') => {
-        return `<p style="margin-bottom: 2mm; display: flex;"><strong style="min-width: 180px; display: inline-block; color: #555;">${label}:</strong> <span style="flex-grow: 1; word-break: break-word;">${formatForDisplay(value, type)}</span></p>`;
+        const formattedValue = formatForDisplay(value, type);
+        // Avoid printing "Не указано: Не указано" by checking formattedValue directly
+        const displayValue = (formattedValue === 'Не указано' && (value === undefined || value === null || String(value).trim() === '')) ? 'Не указано' : formattedValue;
+
+        return `<p style="margin-bottom: 2mm; display: flex;"><strong style="min-width: 180px; display: inline-block; color: #555;">${label}:</strong> <span style="flex-grow: 1; word-break: break-word;">${displayValue}</span></p>`;
     };
     
     const formatOptionalNumber = (val: number | null | undefined) => val === null || val === undefined ? undefined : val;
@@ -149,7 +163,7 @@ const renderPdfHtml = (data: FormValues): string => {
                       field('Дата договора', data.contractDate, 'date') +
                       field('Вид кредитования', data.creditType) +
                       field('Валюта лимита/договора', data.limitCurrency) +
-                      field('Сумма договора/лимита', data.contractAmount, 'number') + 
+                      field('Сумма договора/лимита', formatOptionalNumber(data.contractAmount), data.limitCurrency ? 'currency' : 'number') + 
                       field('Код подразделения банка', data.bankUnitCode) +
                       field('Срок действия договора', data.contractTerm) +
                       field('Расчётный счёт заемщика', data.borrowerAccountNumber) +
@@ -202,7 +216,7 @@ const renderPdfHtml = (data: FormValues): string => {
         data.sublimitDetails.forEach((sl, index) => {
             sublimitsSectionHtml += `<div style="border: 1px solid #eee; padding: 3mm; margin-bottom: 3mm; border-radius: 3px;">`;
             sublimitsSectionHtml += `<h3 style="font-size: 11pt; color: #0055A4; margin-top: 0; margin-bottom: 2mm;">Сублимит ${index + 1}</h3>`;
-            sublimitsSectionHtml += field('Сумма', sl.sublimitAmount, 'number') + 
+            sublimitsSectionHtml += field('Сумма', formatOptionalNumber(sl.sublimitAmount), sl.sublimitCurrency ? 'currency' : 'number') + 
                                    field('Валюта', sl.sublimitCurrency) +
                                    field('Период доступности', sl.sublimitAvailabilityPeriod) +
                                    field('Дата завершения', sl.sublimitExpiryDate, 'date') +
@@ -233,11 +247,13 @@ const renderPdfHtml = (data: FormValues): string => {
                     field('Авторизованное лицо (ФИО)', data.authorizedSignatory);
     html += section('Административные блоки', adminHtml);
     
-    html += `<p style="margin-top: 10mm; font-size: 8pt; text-align: center; color: #777;">Документ сформирован автоматически системой "AI Мастерская" ${format(new Date(), "dd.MM.yyyy HH:mm")}</p>`;
+    html += `<p style="margin-top: 10mm; font-size: 8pt; text-align: center; color: #777;">Документ сформирован автоматически системой "AI Мастерская" ${format(new Date(), "dd.MM.yyyy HH:mm", {locale: ru})}</p>`;
     html += `</div>`;
     return html;
 };
 
+// Make form global for PDF currency rendering
+let form: ReturnType<typeof useForm<FormValues>>;
 
 export default function CreditDispositionGenerator() {
   const [file, setFile] = useState<File | null>(null);
@@ -247,14 +263,53 @@ export default function CreditDispositionGenerator() {
   const [isEditing, setIsEditing] = useState(false);
   const { toast } = useToast();
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(CreditDispositionCardZodSchema), 
+  form = useForm<FormValues>({
+    resolver: zodResolver(CreditDispositionCardZodSchemaClient), 
     defaultValues: {
+        statementNumber: '',
+        borrowerName: '',
+        borrowerInn: '',
+        contractNumber: '',
+        limitCurrency: 'RUB', // Default currency
+        bankUnitCode: '',
+        contractTerm: '',
+        borrowerAccountNumber: '',
+        creditCommitteeDecisionDetails: '',
+        subsidyAgent: '',
+        generalNotesAndSpecialConditions: '',
+        sppiTestResult: '',
+        commissionCalculationMethod: '',
         commissionPaymentSchedule: [],
         sublimitDetails: [],
-        earlyRepaymentConditions: { mandatoryEarlyRepaymentAllowed: false, voluntaryEarlyRepaymentAllowed: false },
-        penaltySanctions: { penaltyIndexation: false },
-        financialIndicatorsAndCalculations: {},
+        earlyRepaymentConditions: { 
+            mandatoryEarlyRepaymentAllowed: false, 
+            voluntaryEarlyRepaymentAllowed: false,
+            earlyRepaymentFundingSources: '',
+            principalAndInterestRepaymentOrder: '',
+            earlyRepaymentMoratoriumDetails: '',
+        },
+        penaltySanctions: { 
+            penaltyIndexation: false,
+            latePrincipalPaymentPenalty: '',
+            lateInterestPaymentPenalty: '',
+            lateCommissionPaymentPenalty: '',
+         },
+        financialIndicatorsAndCalculations: {
+            accruedInterestCalculationRules: '',
+            interestPaymentRegulations: '',
+            debtAndCommissionReservingParams: '',
+            insuranceProductCodes: '',
+            specialContractConditions: '',
+        },
+        dispositionExecutorName: '',
+        authorizedSignatory: '',
+        // Set default for enum types to empty string or a valid default if 'Не выбрано' is not desired
+        creditType: '',
+        enterpriseCategory: '',
+        assetOwnershipBusinessModel: '',
+        marketTransactionAssessment: '',
+        commissionType: '',
+        finalCreditQualityCategory: '',
     },
   });
 
@@ -268,28 +323,40 @@ export default function CreditDispositionGenerator() {
     if (dateInput instanceof Date && isValid(dateInput)) return dateInput;
     
     if (typeof dateInput === 'string') {
-      let date = parseISO(dateInput); 
-      if (isValid(date)) return date;
+      let dateAttempt: Date | undefined;
+      // Try ISO format first (more common from AI)
+      dateAttempt = parseISO(dateInput);
+      if (isValid(dateAttempt)) return dateAttempt;
 
-      date = parse(dateInput, 'dd.MM.yyyy', new Date());
-      if (isValid(date)) return date;
+      // Try dd.MM.yyyy
+      dateAttempt = parse(dateInput, 'dd.MM.yyyy', new Date());
+      if (isValid(dateAttempt)) return dateAttempt;
       
-      date = parse(dateInput, 'yyyy-MM-dd', new Date());
-      if (isValid(date)) return date;
+      // Try yyyy-MM-dd (often used in DBs or other systems)
+      dateAttempt = parse(dateInput, 'yyyy-MM-dd', new Date());
+      if (isValid(dateAttempt)) return dateAttempt;
       
-      return undefined;
+      return undefined; // Could not parse
     }
     return undefined; 
   };
+  
+  const parseNumberSafe = (value: any): number | null => {
+      if (value === null || value === undefined || String(value).trim() === "") return null;
+      const num = parseFloat(String(value).replace(/,/g, '.').replace(/\s/g, '')); // Handle comma as decimal and remove spaces
+      return isNaN(num) ? null : num;
+  };
+
 
   useEffect(() => {
     if (extractedData?.dispositionCard) {
       const rawDataFromAI = extractedData.dispositionCard;
       const processedFormData: Partial<FormValues> = {
-          earlyRepaymentConditions: {}, 
-          penaltySanctions: {},
-          financialIndicatorsAndCalculations: {},
-          sublimitDetails: [],
+        // Initialize nested objects to prevent undefined errors if AI doesn't return them
+        earlyRepaymentConditions: { ...form.getValues().earlyRepaymentConditions, ...rawDataFromAI.earlyRepaymentConditions },
+        penaltySanctions: { ...form.getValues().penaltySanctions, ...rawDataFromAI.penaltySanctions },
+        financialIndicatorsAndCalculations: { ...form.getValues().financialIndicatorsAndCalculations, ...rawDataFromAI.financialIndicatorsAndCalculations },
+        sublimitDetails: [], // Will be populated below
       };
 
       (Object.keys(rawDataFromAI) as Array<keyof CreditDispositionCardData>).forEach(key => {
@@ -313,47 +380,68 @@ export default function CreditDispositionGenerator() {
                 if (sl.sublimitExpiryDate && !parsedSublimitDate) {
                    toast({
                      title: "Предупреждение о формате даты сублимита",
-                     description: `Не удалось автоматически распознать дату завершения для сублимита. Пожалуйста, проверьте и установите ее вручную. (Получено: "${sl.sublimitExpiryDate}")`,
+                     description: `Не удалось автоматически распознать дату завершения для одного из сублимитов. Пожалуйста, проверьте и установите ее вручную. (Получено: "${sl.sublimitExpiryDate}")`,
                      variant: "default",
                      duration: 7000,
                    });
                 }
                 return {
                     ...sl,
-                    sublimitAmount: sl.sublimitAmount === null || sl.sublimitAmount === undefined || String(sl.sublimitAmount).trim() === "" ? null : (isNaN(parseFloat(String(sl.sublimitAmount))) ? null : parseFloat(String(sl.sublimitAmount))),
+                    sublimitAmount: parseNumberSafe(sl.sublimitAmount),
                     sublimitExpiryDate: parsedSublimitDate
                 };
             });
             (processedFormData as any)[key] = parsedSublimits;
-        } else if (key === 'contractAmount') {
-             processedFormData.contractAmount = value === null || value === undefined || String(value).trim() === "" ? null : (isNaN(parseFloat(String(value))) ? null : parseFloat(String(value)));
-        } else if (key === 'earlyRepaymentConditions' && value && typeof value === 'object') {
-            const erc = value as any;
-            processedFormData.earlyRepaymentConditions = { ...value,
-                earlyRepaymentCommissionRate: erc.earlyRepaymentCommissionRate === null || erc.earlyRepaymentCommissionRate === undefined || String(erc.earlyRepaymentCommissionRate).trim() === ""
-                ? null
-                : (isNaN(parseFloat(String(erc.earlyRepaymentCommissionRate))) ? null : parseFloat(String(erc.earlyRepaymentCommissionRate)))
-            };
-        } else if (key === 'financialIndicatorsAndCalculations' && value && typeof value === 'object') {
-            const finCalculations = value as any;
-            processedFormData.financialIndicatorsAndCalculations = { ...value,
-                accruedInterestRate: finCalculations.accruedInterestRate === null || finCalculations.accruedInterestRate === undefined || String(finCalculations.accruedInterestRate).trim() === ""
-                ? null
-                : (isNaN(parseFloat(String(finCalculations.accruedInterestRate))) ? null : parseFloat(String(finCalculations.accruedInterestRate))),
-                capitalizedInterestRate: finCalculations.capitalizedInterestRate === null || finCalculations.capitalizedInterestRate === undefined || String(finCalculations.capitalizedInterestRate).trim() === ""
-                ? null
-                : (isNaN(parseFloat(String(finCalculations.capitalizedInterestRate))) ? null : parseFloat(String(finCalculations.capitalizedInterestRate)))
-            };
-        } else if (key === 'penaltySanctions' && value && typeof value === 'object') {
-             processedFormData.penaltySanctions = value;
-        }
-         else {
-          (processedFormData as any)[key] = value;
+        } else if (key === 'contractAmount' || key === 'earlyRepaymentConditions.earlyRepaymentCommissionRate' || key === 'financialIndicatorsAndCalculations.accruedInterestRate' || key === 'financialIndicatorsAndCalculations.capitalizedInterestRate' ) {
+             // Direct assignment for top-level numbers, nested are handled by object spread
+             if (key === 'contractAmount') processedFormData.contractAmount = parseNumberSafe(value);
+             else if (key === 'earlyRepaymentConditions.earlyRepaymentCommissionRate' && processedFormData.earlyRepaymentConditions) {
+                 (processedFormData.earlyRepaymentConditions as any).earlyRepaymentCommissionRate = parseNumberSafe((value as any)?.earlyRepaymentCommissionRate);
+             } else if (key === 'financialIndicatorsAndCalculations.accruedInterestRate' && processedFormData.financialIndicatorsAndCalculations) {
+                (processedFormData.financialIndicatorsAndCalculations as any).accruedInterestRate = parseNumberSafe((value as any)?.accruedInterestRate);
+             } else if (key === 'financialIndicatorsAndCalculations.capitalizedInterestRate' && processedFormData.financialIndicatorsAndCalculations) {
+                (processedFormData.financialIndicatorsAndCalculations as any).capitalizedInterestRate = parseNumberSafe((value as any)?.capitalizedInterestRate);
+             }
+        } else if (key === 'earlyRepaymentConditions' && typeof value === 'object' && value !== null) {
+             processedFormData.earlyRepaymentConditions = {
+                ...form.getValues().earlyRepaymentConditions, // keep defaults
+                ...value, // override with AI data
+                earlyRepaymentCommissionRate: parseNumberSafe((value as any).earlyRepaymentCommissionRate)
+             };
+        } else if (key === 'financialIndicatorsAndCalculations' && typeof value === 'object' && value !== null) {
+             processedFormData.financialIndicatorsAndCalculations = {
+                ...form.getValues().financialIndicatorsAndCalculations, // keep defaults
+                ...value, // override with AI data
+                accruedInterestRate: parseNumberSafe((value as any).accruedInterestRate),
+                capitalizedInterestRate: parseNumberSafe((value as any).capitalizedInterestRate),
+             };
+        } else if (key === 'penaltySanctions' && typeof value === 'object' && value !== null) {
+             processedFormData.penaltySanctions = {
+                ...form.getValues().penaltySanctions, // keep defaults
+                ...value, // override with AI data
+             };
+        } else {
+          // Ensure enums default to empty string if AI returns null/undefined and schema expects a string
+          const fieldDefinition = CreditDispositionCardZodSchemaClient.shape[key as keyof typeof CreditDispositionCardZodSchemaClient.shape];
+          if (fieldDefinition instanceof z.ZodOptional && fieldDefinition._def.innerType instanceof z.ZodEnum) {
+            (processedFormData as any)[key] = value ?? '';
+          } else {
+            (processedFormData as any)[key] = value;
+          }
         }
       });
       
       form.reset(processedFormData as FormValues);
-      setIsEditing(false);
+      setIsEditing(false); // Start in view mode after data extraction
+        if (!rawDataFromAI.borrowerName && !rawDataFromAI.contractNumber) {
+         toast({
+            title: "Внимание: Низкая точность извлечения",
+            description: "Не удалось извлечь ключевые данные (Имя заемщика или Номер договора). Возможно, документ сложный для анализа или имеет нестандартный формат. Пожалуйста, проверьте все поля вручную.",
+            variant: "destructive", // Or "default" if less alarming
+            duration: 10000, 
+          });
+      }
+
     }
   }, [extractedData, form, toast]);
 
@@ -367,13 +455,7 @@ export default function CreditDispositionGenerator() {
       }
       setFile(selectedFile);
       setExtractedData(null);
-      form.reset({
-        commissionPaymentSchedule: [], 
-        sublimitDetails: [], 
-        earlyRepaymentConditions: { mandatoryEarlyRepaymentAllowed: false, voluntaryEarlyRepaymentAllowed: false },
-        penaltySanctions: { penaltyIndexation: false },
-        financialIndicatorsAndCalculations: {},
-    });
+      form.reset(); // Reset to default values from schema
       setFileDataUri(null);
 
       const reader = new FileReader();
@@ -395,13 +477,7 @@ export default function CreditDispositionGenerator() {
     }
     setIsLoading(true);
     setExtractedData(null);
-    form.reset({
-        commissionPaymentSchedule: [], 
-        sublimitDetails: [], 
-        earlyRepaymentConditions: { mandatoryEarlyRepaymentAllowed: false, voluntaryEarlyRepaymentAllowed: false },
-        penaltySanctions: { penaltyIndexation: false },
-        financialIndicatorsAndCalculations: {},
-    });
+    form.reset();
     try {
       const result: GenerateCreditDispositionOutput = await generateCreditDisposition({ documentDataUri: fileDataUri, fileName: file.name });
       setExtractedData(result);
@@ -415,9 +491,18 @@ export default function CreditDispositionGenerator() {
   };
 
  const handleSaveEdits = (values: FormValues) => {
+    // Ensure sublimitDetails are correctly formatted (numbers for amounts) before setting extractedData
+    const sublimitDetailsWithNumbers = (values.sublimitDetails || []).map(sl => ({
+        ...sl,
+        sublimitAmount: parseNumberSafe(sl.sublimitAmount)
+    }));
+
     setExtractedData(prev => {
         if (!prev) return null;
-        const updatedCardData = { ...values } as CreditDispositionCardData;
+        const updatedCardData = { 
+            ...values, 
+            sublimitDetails: sublimitDetailsWithNumbers 
+        } as CreditDispositionCardData;
         return { ...prev, dispositionCard: updatedCardData };
     });
 
@@ -427,15 +512,15 @@ export default function CreditDispositionGenerator() {
 
 
   const handleExportPdf = async () => {
-    if (!extractedData?.dispositionCard) {
+    if (!extractedData?.dispositionCard && Object.keys(form.getValues()).length === 0) { // Check both AI data and form data
         toast({ title: 'Нет данных для экспорта', variant: 'destructive' });
         return;
     }
     setIsLoading(true);
     
+    // Use current form values for PDF generation as they include user edits
     const currentFormData = form.getValues(); 
     const dataForPdf = { ...currentFormData };
-
 
     const htmlString = renderPdfHtml(dataForPdf);
     const pdfRenderAreaId = 'pdf-hidden-render-area';
@@ -446,51 +531,79 @@ export default function CreditDispositionGenerator() {
         pdfRenderArea.style.position = 'absolute';
         pdfRenderArea.style.left = '-9999px'; 
         pdfRenderArea.style.top = '0';
-        pdfRenderArea.style.width = '210mm'; 
+        pdfRenderArea.style.width = '210mm'; // A4 width for rendering
         document.body.appendChild(pdfRenderArea);
     }
     pdfRenderArea.innerHTML = htmlString;
 
     try {
+      // Ensure content is rendered before calling html2canvas
+      await new Promise(resolve => setTimeout(resolve, 200));
       await exportHtmlElementToPdf(pdfRenderAreaId, `Распоряжение_${dataForPdf.contractNumber || 'бн'}`);
       toast({ title: 'Экспорт в PDF успешен' });
     } catch (e) {
+      console.error("PDF Export error:", e);
       toast({ title: 'Ошибка экспорта PDF', description: (e as Error).message, variant: 'destructive' });
     } finally {
       setIsLoading(false);
       if (pdfRenderArea) { 
-          pdfRenderArea.innerHTML = '';
+          pdfRenderArea.innerHTML = ''; // Clean up
       }
     }
   };
 
   const handleExportJson = () => {
-    if (!extractedData?.dispositionCard) return;
+     const currentFormData = { ...form.getValues() };
+    if (!currentFormData && !extractedData?.dispositionCard) {
+        toast({ title: 'Нет данных для экспорта', variant: 'destructive' });
+        return;
+    }
+
+    let dataToExport: any = { ...currentFormData };
+
+    // Ensure dates are in 'yyyy-MM-dd' format for JSON
+    const formatDateForJson = (dateInput: any) => {
+        if (dateInput instanceof Date && isValid(dateInput)) {
+            return format(dateInput, "yyyy-MM-dd");
+        }
+        if (typeof dateInput === 'string') { // If it's already a string, try parsing and reformatting
+            const parsed = parseDateSafe(dateInput);
+            if (parsed) return format(parsed, "yyyy-MM-dd");
+        }
+        return dateInput; // return as is if not a valid date or already string
+    };
+
+    dataToExport.statementDate = formatDateForJson(dataToExport.statementDate);
+    dataToExport.contractDate = formatDateForJson(dataToExport.contractDate);
     
-    let dataToExport = { ...form.getValues() } as Partial<FormValues>;
+    if (dataToExport.commissionPaymentSchedule && Array.isArray(dataToExport.commissionPaymentSchedule)) {
+        dataToExport.commissionPaymentSchedule = dataToExport.commissionPaymentSchedule.map(formatDateForJson);
+    }
 
-    dataToExport.sublimitDetails = (form.getValues('sublimitDetails') || []).map(sl => ({
-         ...sl,
-         sublimitExpiryDate: sl.sublimitExpiryDate instanceof Date && isValid(sl.sublimitExpiryDate)
-                ? format(sl.sublimitExpiryDate, "yyyy-MM-dd")
-                : (typeof sl.sublimitExpiryDate === 'string' ? sl.sublimitExpiryDate : undefined)
-    }));
+    if (dataToExport.sublimitDetails && Array.isArray(dataToExport.sublimitDetails)) {
+        dataToExport.sublimitDetails = dataToExport.sublimitDetails.map((sl: any) => ({
+            ...sl,
+            sublimitExpiryDate: formatDateForJson(sl.sublimitExpiryDate),
+            sublimitAmount: parseNumberSafe(sl.sublimitAmount) // Ensure amount is number
+        }));
+    }
+    
+    // Ensure numeric fields are numbers
+    dataToExport.contractAmount = parseNumberSafe(dataToExport.contractAmount);
+    if (dataToExport.earlyRepaymentConditions) {
+        dataToExport.earlyRepaymentConditions.earlyRepaymentCommissionRate = parseNumberSafe(dataToExport.earlyRepaymentConditions.earlyRepaymentCommissionRate);
+    }
+    if (dataToExport.financialIndicatorsAndCalculations) {
+        dataToExport.financialIndicatorsAndCalculations.accruedInterestRate = parseNumberSafe(dataToExport.financialIndicatorsAndCalculations.accruedInterestRate);
+        dataToExport.financialIndicatorsAndCalculations.capitalizedInterestRate = parseNumberSafe(dataToExport.financialIndicatorsAndCalculations.capitalizedInterestRate);
+    }
 
 
-    const jsonString = JSON.stringify(dataToExport, (key, value) => {
-      if (value && (key === "statementDate" || key === "contractDate") && value instanceof Date && isValid(value)) {
-        return format(value, "yyyy-MM-dd");
-      }
-      if (value && key === "commissionPaymentSchedule" && Array.isArray(value)) {
-        return value.map(d => d instanceof Date && isValid(d) ? format(d, "yyyy-MM-dd") : d);
-      }
-      return value;
-    }, 2);
-
+    const jsonString = JSON.stringify(dataToExport, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `Распоряжение_${dataToExport.contractNumber || 'бн'}.json`;
+    link.download = `Распоряжение_${currentFormData.contractNumber || 'бн'}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -499,7 +612,7 @@ export default function CreditDispositionGenerator() {
   
   const renderFormField = (
     control: any, 
-    name: string, 
+    fieldName: string, // Renamed from 'name' to avoid conflict in some scopes
     label: string, 
     type: "text" | "number" | "textarea" | "select" | "checkbox" | "date" | "dateArray", 
     options?: string[],
@@ -511,47 +624,46 @@ export default function CreditDispositionGenerator() {
 
     return (
       <FormField
-        control={control}
-        name={name} 
+        control={control} // Use passed control
+        name={fieldName as keyof FormValues} // Use passed fieldName
         render={({ field }) => {
             let fieldValue = field.value;
              if (type === "text" || type === "textarea") {
                 fieldValue = field.value === undefined || field.value === null ? "" : field.value;
             } else if (type === "number") {
-                 fieldValue = field.value === undefined || field.value === null || field.value === "" ? "" : String(field.value);
+                 fieldValue = field.value === undefined || field.value === null || String(field.value).trim() === "" ? "" : String(field.value);
             } else if (type === 'checkbox') {
                 fieldValue = field.value === undefined || field.value === null ? false : field.value;
             }
 
             return (
             <FormItem className="mb-3 flex flex-col">
-                <FormLabel htmlFor={name} className="text-sm font-medium mb-1">{label}</FormLabel>
+                <FormLabel htmlFor={fieldName} className="text-sm font-medium mb-1">{label}</FormLabel>
                 {type === 'textarea' ? (
                 <Textarea 
-                    id={name} 
-                    {...form.register(name as keyof FormValues)} 
+                    id={fieldName} 
+                    {...form.register(fieldName as keyof FormValues)} 
                     defaultValue={fieldValue as string} 
                     readOnly={readOnly} 
                     rows={3} 
                     className={cn("mt-0.5", commonInputClass)} 
-                    placeholder={(readOnly && !fieldValue ? 'Нет данных' : undefined)}
+                    placeholder={(readOnly && (fieldValue === undefined || fieldValue === null || String(fieldValue).trim() === '') ? 'Нет данных' : undefined)}
                 />
                 ) : type === 'select' && options ? (
                 <Controller
                     control={control}
-                    name={name as keyof FormValues}
+                    name={fieldName as keyof FormValues}
                     render={({ field: controllerField }) => (
                     <Select 
                         onValueChange={controllerField.onChange} 
-                        value={controllerField.value as string || ""}
+                        value={String(controllerField.value ?? '')} // Ensure value is string, default to empty for placeholder
                         disabled={readOnly}
                     >
                         <SelectTrigger className={cn("mt-0.5 w-full", commonInputClass)}>
-                        <SelectValue placeholder={`Выберите ${label.toLowerCase()}`} />
+                           <SelectValue placeholder={`Выберите ${label.toLowerCase()}`} />
                         </SelectTrigger>
                         <SelectContent>
-                        
-                        {options.filter(opt => opt !== "").map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                           {options.filter(opt => opt !== "").map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                         </SelectContent>
                     </Select>
                     )}
@@ -559,9 +671,9 @@ export default function CreditDispositionGenerator() {
                 ) : type === 'checkbox' ? (
                  <div className="mt-0.5 flex items-center h-10">
                     <Checkbox 
-                        id={name} 
+                        id={fieldName} 
                         checked={fieldValue as boolean} 
-                        onCheckedChange={field.onChange} 
+                        onCheckedChange={(checkedState) => field.onChange(checkedState)}
                         disabled={readOnly}
                         className={readOnly ? "cursor-default" : ""}
                     />
@@ -574,18 +686,20 @@ export default function CreditDispositionGenerator() {
                         className={cn("w-full justify-start text-left font-normal mt-0.5", !(field.value instanceof Date && isValid(field.value)) && "text-muted-foreground", commonInputClass)}
                         disabled={readOnly}
                     >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        <LucideCalendarIcon className="mr-2 h-4 w-4" /> {/* Use aliased import */}
                         {field.value instanceof Date && isValid(field.value)
                             ? format(field.value, "dd.MM.yyyy", { locale: ru })
-                            : <span>Выберите дату</span>
+                            : ((typeof field.value === 'string' && parseDateSafe(field.value)) // try to format if it's a parsable string
+                               ? format(parseDateSafe(field.value)!, "dd.MM.yyyy", { locale: ru })
+                               : <span>Выберите дату</span>)
                         }
                     </Button>
                     </PopoverTrigger>
                     {!readOnly && (
                         <PopoverContent className="w-auto p-0">
-                        <Calendar
+                        <ShadCalendar // Use aliased import
                             mode="single"
-                            selected={field.value instanceof Date && isValid(field.value) ? field.value : undefined}
+                            selected={field.value instanceof Date && isValid(field.value) ? field.value : (typeof field.value === 'string' ? parseDateSafe(field.value) : undefined)}
                             onSelect={date => field.onChange(date)}
                             initialFocus
                             locale={ru}
@@ -621,7 +735,7 @@ export default function CreditDispositionGenerator() {
                                     <Button type="button" variant="outline" className="w-full text-xs">Добавить дату в график</Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0">
-                                    <Calendar
+                                    <ShadCalendar // Use aliased import
                                         mode="single"
                                         onSelect={(selectedDate) => {
                                             if (selectedDate) {
@@ -637,17 +751,17 @@ export default function CreditDispositionGenerator() {
                      </div>
                 ) : ( 
                 <Input 
-                    id={name} 
+                    id={fieldName} 
                     type={type === 'number' ? 'number' : 'text'} 
                     step={type === 'number' ? 'any' : undefined}
-                    {...form.register(name as keyof FormValues, { 
+                    {...form.register(fieldName as keyof FormValues, { 
                         valueAsNumber: type === 'number',
-                        setValueAs: type === 'number' ? (v: any) => (v === "" || v === null || v === undefined ? null : parseFloat(v)) : undefined 
+                        setValueAs: type === 'number' ? (v: any) => (v === "" || v === null || v === undefined ? null : parseFloat(String(v).replace(/,/g, '.'))) : undefined 
                     })} 
                     defaultValue={fieldValue as any} 
                     readOnly={readOnly} 
                     className={cn("mt-0.5", commonInputClass)} 
-                    placeholder={readOnly && !fieldValue ? 'Нет данных' : undefined}
+                    placeholder={readOnly && (fieldValue === undefined || fieldValue === null || String(fieldValue).trim() === '') ? 'Нет данных' : undefined}
                 />
                 )}
                 {description && <FormDescription className="text-xs mt-1">{description}</FormDescription>}
@@ -685,7 +799,7 @@ export default function CreditDispositionGenerator() {
             {file && <p className="text-xs text-muted-foreground mt-1">Выбран файл: {file.name}</p>}
           </div>
           <Button onClick={handleExtractData} disabled={isLoading || !fileDataUri} className="w-full text-base py-3">
-            {isLoading && extractedData === null ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
+            {isLoading && !extractedData ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
             Извлечь данные из договора
           </Button>
         </CardContent>
@@ -700,19 +814,20 @@ export default function CreditDispositionGenerator() {
         </Card>
       )}
       
-      <div id="pdf-hidden-render-area" style={{ display: 'none' }}></div>
+      <div id="pdf-hidden-render-area" style={{ position: 'absolute', left: '-9999px', top: '0', width: '210mm' }}></div>
 
-      {extractedData && (
+
+      {(extractedData || isEditing) && ( // Show form if data is extracted OR if user explicitly enters edit mode (e.g. for manual entry)
         <Form {...form}> 
           <form onSubmit={form.handleSubmit(handleSaveEdits)}>
             <Card id="disposition-card-view" className="mt-4 shadow-xl rounded-xl"> 
               <CardHeader className="flex flex-row items-center justify-between pb-4">
                   <div>
                       <CardTitle className="text-xl">Проект распоряжения</CardTitle>
-                      <CardDescription>Проверьте и при необходимости отредактируйте извлеченные данные.</CardDescription>
+                      <CardDescription>{isEditing ? "Редактируйте извлеченные данные." : "Проверьте извлеченные данные. Нажмите 'Редактировать' для внесения изменений."}</CardDescription>
                   </div>
                   {!isEditing ? (
-                      <Button type="button" variant="outline" onClick={() => setIsEditing(true)} disabled={isLoading}>
+                      <Button type="button" variant="outline" onClick={() => setIsEditing(true)} disabled={isLoading || !extractedData}>
                           <Edit3 className="mr-2 h-4 w-4" /> Редактировать
                       </Button>
                   ) : (
@@ -788,13 +903,8 @@ export default function CreditDispositionGenerator() {
                         <Card key={item.id} className="p-4 bg-secondary/30 shadow-sm">
                           <div className="flex justify-between items-center mb-2">
                             <h4 className="font-semibold text-md">Сублимит {index + 1}</h4>
-                            {!isEditing && (
-                                <Button type="button" variant="ghost" size="icon" onClick={() => {if(isEditing) removeSublimit(index)}} disabled={!isEditing}>
-                                  <Trash2 className="h-4 w-4 text-destructive"/>
-                                </Button>
-                            )}
                             {isEditing && (
-                                <Button type="button" variant="ghost" size="icon" onClick={() => removeSublimit(index)}>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => removeSublimit(index)} title="Удалить сублимит">
                                   <Trash2 className="h-4 w-4 text-destructive"/>
                                 </Button>
                             )}
@@ -818,7 +928,7 @@ export default function CreditDispositionGenerator() {
                             className="mt-2"
                             onClick={() => appendSublimit({ 
                                 sublimitAmount: null, 
-                                sublimitCurrency: '', 
+                                sublimitCurrency: 'RUB', 
                                 sublimitAvailabilityPeriod: '', 
                                 sublimitExpiryDate: undefined, 
                                 sublimitPurpose: '', 
@@ -862,7 +972,7 @@ export default function CreditDispositionGenerator() {
                       <Download className="mr-2 h-4 w-4" /> Экспорт в JSON
                   </Button>
                   <Button type="button" variant="outline" onClick={handleExportPdf} disabled={isLoading || isEditing}>
-                      {isLoading && !fileDataUri && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
+                      {isLoading && !fileDataUri && extractedData && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
                       <Download className="mr-2 h-4 w-4" /> Экспорт в PDF
                   </Button>
               </CardFooter>
@@ -873,4 +983,3 @@ export default function CreditDispositionGenerator() {
     </div>
   );
 }
-
