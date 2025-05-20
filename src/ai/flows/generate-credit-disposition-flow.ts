@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview Generates a credit agreement disposition card with detailed financial and legal attributes.
@@ -74,7 +75,7 @@ const CreditDispositionCardZodSchema = z.object({
     earlyRepaymentCommissionRate: z.coerce.number().optional().nullable().describe("Размер комиссий за досрочные выплаты (в процентах, только числовое значение, например 1.5). Искать в условиях досрочного погашения."),
     principalAndInterestRepaymentOrder: z.string().optional().describe("Очередность погашения основного долга и процентов при досрочном погашении (например, 'Сначала проценты, затем основной долг'). Искать в условиях досрочного погашения."),
     earlyRepaymentMoratoriumDetails: z.string().optional().describe("Ограничительные моратории на возможность досрочно погасить долг (описание условий или \"Отсутствует\"). Искать в условиях досрочного погашения."),
-  }).optional().describe("Детали условий досрочного погашения. Если раздел отсутствует, этот объект можно опустить."),
+  }).optional().default({}).describe("Детали условий досрочного погашения. Если раздел отсутствует, этот объект можно опустить."),
 
   // Штрафные санкции за просрочку платежа
   penaltySanctions: z.object({
@@ -82,10 +83,10 @@ const CreditDispositionCardZodSchema = z.object({
     lateInterestPaymentPenalty: z.string().optional().describe("Размеры санкций за задержку оплаты начисленных процентов (например, \"Аналогично штрафу за просрочку ОД\"). Искать там же."),
     lateCommissionPaymentPenalty: z.string().optional().describe("Штрафы за неоплату комиссий (например, \"0.05% в день от суммы неоплаченной комиссии\"). Искать там же."),
     penaltyIndexation: z.boolean().optional().describe('Применяется ли увеличение размера неустойки (true/false). Искать в условиях о штрафах.'),
-  }).optional().describe("Детали штрафных санкций. Если раздел отсутствует, этот объект можно опустить."),
+  }).optional().default({}).describe("Детали штрафных санкций. Если раздел отсутствует, этот объект можно опустить."),
 
   // Информация по сублимитам
-  sublimitDetails: z.array(SublimitDetailSchema).optional().describe("Массив объектов с детальной информацией по каждому сублимиту. Если сублимиты не найдены, оставить пустым массивом."),
+  sublimitDetails: z.array(SublimitDetailSchema).optional().default([]).describe("Массив объектов с детальной информацией по каждому сублимиту. Если сублимиты не найдены, оставить пустым массивом."),
 
   // Дополнительные финансовые показатели и регламенты расчетов
   financialIndicatorsAndCalculations: z.object({
@@ -96,7 +97,7 @@ const CreditDispositionCardZodSchema = z.object({
     debtAndCommissionReservingParams: z.string().optional().describe("Параметры резервирования по долгу и комиссиям (например, 'Согласно Положению ЦБ РФ № XXX'). Обычно это внутренняя информация банка, может отсутствовать в договоре."),
     insuranceProductCodes: z.string().optional().describe("Специфические коды страховых продуктов, если применимо. Искать упоминания страхования в договоре."),
     specialContractConditions: z.string().optional().describe("Особые условия договора, относящиеся к финансовым расчетам, не вошедшие в другие поля."),
-  }).optional().describe("Финансовые показатели и регламенты. Если раздел отсутствует, этот объект можно опустить."),
+  }).optional().default({}).describe("Финансовые показатели и регламенты. Если раздел отсутствует, этот объект можно опустить."),
 
   // Административные блоки
   finalCreditQualityCategory: z.enum(['Хорошее', 'Проблемное', 'Просроченное', 'Не определена']).optional().describe('Итоговая категория качества кредита (соответствие нормам ЦБ) (выбрать из: "Хорошее", "Проблемное", "Просроченное", "Не определена"). Обычно это внутренняя оценка банка.'),
@@ -231,7 +232,7 @@ const generateCreditDispositionFlow = ai.defineFlow(
             safetySettings: [ // Relaxed safety settings for legal/financial documents
               { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
               { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' }, // Keep high for financial docs
+              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' }, 
               { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
             ],
           }
@@ -246,9 +247,24 @@ const generateCreditDispositionFlow = ai.defineFlow(
           output.dispositionCard.sublimitDetails = output.dispositionCard.sublimitDetails || [];
           output.dispositionCard.commissionPaymentSchedule = output.dispositionCard.commissionPaymentSchedule || [];
           
-          // Enhanced retry condition: check for critical fields
+          // Fallback for contractAmount: sum of sublimits if contractAmount is not found by AI
+          if ((output.dispositionCard.contractAmount === null || output.dispositionCard.contractAmount === undefined) &&
+              output.dispositionCard.sublimitDetails && output.dispositionCard.sublimitDetails.length > 0) {
+            let sumOfSublimits = 0;
+            for (const sl of output.dispositionCard.sublimitDetails) {
+              if (typeof sl.sublimitAmount === 'number') {
+                sumOfSublimits += sl.sublimitAmount;
+              }
+            }
+            if (sumOfSublimits > 0) {
+              output.dispositionCard.contractAmount = sumOfSublimits;
+              console.log(`Calculated contractAmount as sum of sublimits: ${sumOfSublimits}`);
+            }
+          }
+          
+          // Enhanced retry condition: check for critical fields including contractAmount now
           if (
-            attempt < MAX_RETRIES -1 && // Only retry if not the last attempt
+            attempt < MAX_RETRIES -1 && 
             (!output.dispositionCard.borrowerName || 
              !output.dispositionCard.contractNumber || 
              output.dispositionCard.contractAmount === null || 
@@ -259,49 +275,43 @@ const generateCreditDispositionFlow = ai.defineFlow(
             const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
             await new Promise(resolve => setTimeout(resolve, delay));
             attempt++;
-            continue; // Skip to next iteration for retry
+            continue; 
           }
           return output;
         }
         
-        // If !output.dispositionCard and this is the last attempt
         if (attempt === MAX_RETRIES - 1) {
           throw new Error('AI не вернул ожидаемый результат (dispositionCard) после нескольких попыток.');
         }
 
       } catch (e: any) {
         const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : JSON.stringify(e);
-        // Check for common retryable errors
         const isRetryableError = 
-          errorMessage.includes('503') || // Service Unavailable
-          errorMessage.includes('overloaded') || // Model Overloaded
+          errorMessage.includes('503') || 
+          errorMessage.includes('overloaded') || 
           errorMessage.includes('service unavailable') ||
-          errorMessage.includes('rate limit') || // Rate limit exceeded
-          errorMessage.includes('resource has been exhausted') || // Common for complex tasks
-          errorMessage.includes('deadline exceeded') || // Timeout
-          errorMessage.includes('internal error') || // General Google error
+          errorMessage.includes('rate limit') || 
+          errorMessage.includes('resource has been exhausted') || 
+          errorMessage.includes('deadline exceeded') || 
+          errorMessage.includes('internal error') || 
           errorMessage.includes('try again later') ||
-          errorMessage.includes('429'); // HTTP 429 Too Many Requests
+          errorMessage.includes('429'); 
         
         if (isRetryableError) {
           if (attempt === MAX_RETRIES - 1) {
-            // Last attempt failed with a retryable error
             throw new Error('Сервис временно перегружен или достигнут лимит запросов. Пожалуйста, попробуйте позже.');
           }
-          // Wait before retrying
           const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
           console.warn(`Attempt ${attempt + 1}: Retryable error encountered: ${errorMessage}. Retrying in ${delay/1000}s...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          // Non-retryable error
           console.error("Non-retryable error in generateCreditDispositionFlow:", e);
           throw e; 
         }
       }
       attempt++;
     }
-    // Fallback, should ideally not be reached if logic is perfect.
-    // This will be hit if all retries result in no output without throwing a catchable error.
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
+

@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { ChangeEvent } from 'react';
@@ -107,26 +108,22 @@ const parseDateSafe = (dateInput: any): Date | undefined => {
     
     if (typeof dateInput === 'string') {
       let dateAttempt: Date | undefined;
-      // Try ISO format first (more common from AI)
       dateAttempt = parseISO(dateInput);
       if (isValid(dateAttempt)) return dateAttempt;
 
-      // Try dd.MM.yyyy
       dateAttempt = parse(dateInput, 'dd.MM.yyyy', new Date());
       if (isValid(dateAttempt)) return dateAttempt;
       
-      // Try yyyy-MM-dd (often used in DBs or other systems)
       dateAttempt = parse(dateInput, 'yyyy-MM-dd', new Date());
       if (isValid(dateAttempt)) return dateAttempt;
       
-      return undefined; // Could not parse
+      return undefined; 
     }
     return undefined; 
   };
   
 const parseNumberSafe = (value: any): number | null => {
     if (value === null || value === undefined || String(value).trim() === "") return null;
-    // Allow for both comma and dot as decimal separators, remove spaces.
     const numStr = String(value).replace(/\s/g, '').replace(',', '.');
     const num = parseFloat(numStr);
     return isNaN(num) ? null : num;
@@ -173,9 +170,7 @@ const renderPdfHtml = (data: FormValues): string => {
 
     const section = (title: string, contentHtml: string) => {
         if (!contentHtml.trim() || contentHtml.includes('<p style="margin-bottom: 2mm; display: flex;"><strong style="min-width: 180px; display: inline-block; color: #555;">Условия:</strong> <span style="flex-grow: 1; word-break: break-word;">Не указано</span></p>') && !contentHtml.replace('<p style="margin-bottom: 2mm; display: flex;"><strong style="min-width: 180px; display: inline-block; color: #555;">Условия:</strong> <span style="flex-grow: 1; word-break: break-word;">Не указано</span></p>', '').trim()) {
-            // If section is empty or only contains "Условия: Не указано", don't render it.
-            // This is a bit hacky, better to check if all values in contentHtml are "Не указано"
-           // return '';
+           // return ''; // Temporarily disable hiding empty sections to debug PDF content
         }
         return `<h2 style="font-size: 12pt; color: #004080; margin-top: 8mm; margin-bottom: 4mm; border-bottom: 1px solid #eee; padding-bottom: 2mm;">${title}</h2>${contentHtml}`;
     };
@@ -256,7 +251,7 @@ const renderPdfHtml = (data: FormValues): string => {
             sublimitsSectionHtml += `<div style="border: 1px solid #eee; padding: 3mm; margin-bottom: 3mm; border-radius: 3px;">`;
             sublimitsSectionHtml += `<h3 style="font-size: 11pt; color: #0055A4; margin-top: 0; margin-bottom: 2mm;">Сублимит ${index + 1}</h3>`;
             sublimitsSectionHtml += field('Сумма', formatOptionalNumberForPdf(sl.sublimitAmount), 'currency', sl.sublimitCurrency || data.limitCurrency) + 
-                                   field('Валюта', sl.sublimitCurrency || data.limitCurrency) + // Fallback to main currency
+                                   field('Валюта', sl.sublimitCurrency || data.limitCurrency) + 
                                    field('Период доступности', sl.sublimitAvailabilityPeriod) +
                                    field('Дата завершения', sl.sublimitExpiryDate, 'date') +
                                    field('Цель', sl.sublimitPurpose) +
@@ -373,11 +368,10 @@ export default function CreditDispositionGenerator() {
             ...defaultValuesFromForm,
         };
 
-        // Directly map top-level fields, parsing numbers and dates
         (Object.keys(rawDataFromAI) as Array<keyof CreditDispositionCardData>).forEach(key => {
             const value = rawDataFromAI[key];
             if (value === undefined || value === null) {
-                 (processedFormData as any)[key] = defaultValuesFromForm[key as keyof typeof defaultValuesFromForm]; // Keep default if AI returns nothing
+                 (processedFormData as any)[key] = defaultValuesFromForm[key as keyof typeof defaultValuesFromForm];
                  return;
             }
 
@@ -396,11 +390,16 @@ export default function CreditDispositionGenerator() {
                     }
                     break;
                 case 'contractAmount':
-                    processedFormData.contractAmount = parseNumberSafe(value);
+                case 'earlyRepaymentConditions.earlyRepaymentCommissionRate':
+                case 'financialIndicatorsAndCalculations.accruedInterestRate':
+                case 'financialIndicatorsAndCalculations.capitalizedInterestRate':
+                    (processedFormData as any)[key] = parseNumberSafe(value);
                     break;
                 case 'commissionPaymentSchedule':
                     if (Array.isArray(value)) {
                         processedFormData.commissionPaymentSchedule = value.map(d => parseDateSafe(d)).filter(d => d instanceof Date && isValid(d)) as Date[];
+                    } else {
+                        processedFormData.commissionPaymentSchedule = [];
                     }
                     break;
                 case 'sublimitDetails':
@@ -421,6 +420,8 @@ export default function CreditDispositionGenerator() {
                                 sublimitExpiryDate: parsedSublimitDate,
                             };
                         });
+                    } else {
+                         processedFormData.sublimitDetails = [];
                     }
                     break;
                 case 'earlyRepaymentConditions':
@@ -445,7 +446,6 @@ export default function CreditDispositionGenerator() {
                     };
                     break;
                 default:
-                    // Handle enums to default to empty string if AI returns undefined/null but schema has '' as option
                     const fieldDefinition = CreditDispositionCardZodSchemaClient.shape[key as keyof typeof CreditDispositionCardZodSchemaClient.shape];
                     if (fieldDefinition instanceof z.ZodOptional && fieldDefinition._def.innerType instanceof z.ZodEnum) {
                         if ((value === undefined || value === null) && fieldDefinition._def.innerType._def.values.includes('')) {
@@ -459,12 +459,31 @@ export default function CreditDispositionGenerator() {
             }
         });
         
-        // Ensure nested objects are at least empty objects if not provided by AI or defaults
         processedFormData.earlyRepaymentConditions = processedFormData.earlyRepaymentConditions || {};
         processedFormData.penaltySanctions = processedFormData.penaltySanctions || {};
         processedFormData.financialIndicatorsAndCalculations = processedFormData.financialIndicatorsAndCalculations || {};
         processedFormData.sublimitDetails = processedFormData.sublimitDetails || [];
         processedFormData.commissionPaymentSchedule = processedFormData.commissionPaymentSchedule || [];
+
+        // Fallback for contractAmount if not extracted by AI
+        if ((processedFormData.contractAmount === null || processedFormData.contractAmount === undefined) &&
+            processedFormData.sublimitDetails && processedFormData.sublimitDetails.length > 0) {
+            let sumOfSublimits = 0;
+            for (const sl of processedFormData.sublimitDetails) {
+                if (typeof sl.sublimitAmount === 'number') {
+                    sumOfSublimits += sl.sublimitAmount;
+                }
+            }
+            if (sumOfSublimits > 0) {
+                processedFormData.contractAmount = sumOfSublimits;
+                toast({
+                    title: "Информация: Сумма договора",
+                    description: `Сумма договора не была извлечена явно и была рассчитана как сумма сублимитов: ${sumOfSublimits.toLocaleString('ru-RU')}`,
+                    variant: "default",
+                    duration: 7000,
+                });
+            }
+        }
 
 
         form.reset(processedFormData as FormValues);
@@ -473,7 +492,8 @@ export default function CreditDispositionGenerator() {
         if (
             (!rawDataFromAI.borrowerName || rawDataFromAI.borrowerName.trim() === "") &&
             (!rawDataFromAI.contractNumber || rawDataFromAI.contractNumber.trim() === "") &&
-            (rawDataFromAI.contractAmount === null || rawDataFromAI.contractAmount === undefined)
+            (rawDataFromAI.contractAmount === null || rawDataFromAI.contractAmount === undefined) &&
+            (!processedFormData.contractAmount) // Check calculated amount too
         ) {
             toast({
                 title: "Внимание: Низкая точность извлечения",
@@ -787,7 +807,7 @@ export default function CreditDispositionGenerator() {
                 ) : ( 
                 <Input 
                     id={fieldName} 
-                    type={type === 'number' ? 'text' : 'text'} // Use text for number to allow formatting and better control
+                    type={type === 'number' ? 'text' : 'text'} 
                     {...form.register(fieldName as keyof FormValues, { 
                        setValueAs: type === 'number' ? (v: any) => {
                             if (v === "" || v === null || v === undefined) return null;
@@ -796,13 +816,11 @@ export default function CreditDispositionGenerator() {
                         } : undefined
                     })} 
                     defaultValue={fieldValueForDisplay as any}
-                    onBlur={(e) => { // Format on blur if it's a number for display
+                    onBlur={(e) => { 
                         if (type === 'number' && e.target.value) {
-                            const num = parseNumberSafe(e.target.value);
-                            // e.target.value = num !== null ? num.toLocaleString('ru-RU') : ''; // This causes issues with react-hook-form state
-                            // form.setValue(fieldName as keyof FormValues, num as any); // Already handled by setValueAs
+                            // const num = parseNumberSafe(e.target.value); // Already handled by setValueAs
                         }
-                        field.onBlur(); // Call original onBlur
+                        field.onBlur(); 
                     }}
                     readOnly={readOnly} 
                     className={cn("mt-0.5", commonInputClass)} 
@@ -973,7 +991,7 @@ export default function CreditDispositionGenerator() {
                             className="mt-2"
                             onClick={() => appendSublimit({ 
                                 sublimitAmount: null, 
-                                sublimitCurrency: form.getValues('limitCurrency') || 'RUB', // Default to main currency
+                                sublimitCurrency: form.getValues('limitCurrency') || 'RUB', 
                                 sublimitAvailabilityPeriod: '', 
                                 sublimitExpiryDate: undefined, 
                                 sublimitPurpose: '', 
@@ -1028,3 +1046,4 @@ export default function CreditDispositionGenerator() {
     </div>
   );
 }
+
