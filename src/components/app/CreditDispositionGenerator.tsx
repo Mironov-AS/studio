@@ -113,13 +113,13 @@ const formatForDisplay = (value: any, type: 'date' | 'boolean' | 'currency' | 'p
     if (type === 'boolean') {
         return value ? 'Да' : 'Нет';
     }
-    if (type === 'currency' && typeof value === 'number') { // This is for display with currency symbol
-        return `${value.toLocaleString('ru-RU')} RUB`; // Assuming RUB for now
+    if (type === 'currency' && typeof value === 'number') { 
+        return `${value.toLocaleString('ru-RU')} RUB`; 
     }
     if (type === 'percent' && typeof value === 'number') {
         return `${value.toLocaleString('ru-RU')}%`;
     }
-    if (type === 'number' && typeof value === 'number') { // Generic number formatting
+    if (type === 'number' && typeof value === 'number') { 
         return value.toLocaleString('ru-RU');
     }
     return String(value);
@@ -141,7 +141,6 @@ const renderPdfHtml = (data: FormValues): string => {
     const formatOptionalNumber = (val: number | null | undefined) => val === null || val === undefined ? undefined : val;
 
 
-    // Общие элементы
     let generalHtml = field('Номер заявления', data.statementNumber) +
                       field('Дата заявления', data.statementDate, 'date') +
                       field('Наименование заемщика', data.borrowerName) +
@@ -160,13 +159,11 @@ const renderPdfHtml = (data: FormValues): string => {
                       field('Общие примечания и особые условия', data.generalNotesAndSpecialConditions);
     html += section('Общие элементы', generalHtml);
 
-    // МСФО
     let msfoHtml = field('Результат SPPI-теста', data.sppiTestResult) +
                    field('Бизнес-модель владения активом', data.assetOwnershipBusinessModel) +
                    field('Оценка рыночности сделки', data.marketTransactionAssessment);
     html += section('Элементы для МСФО', msfoHtml);
 
-    // Комиссионные сборы
     let commissionHtml = field('Вид комиссии', data.commissionType) +
                          field('Порядок расчета комиссий', data.commissionCalculationMethod);
     if (data.commissionPaymentSchedule && data.commissionPaymentSchedule.length > 0) {
@@ -180,7 +177,6 @@ const renderPdfHtml = (data: FormValues): string => {
     }
     html += section('Комиссионные сборы по договору', commissionHtml);
 
-    // Условия досрочного погашения
     let earlyRepaymentHtml = '';
     if (data.earlyRepaymentConditions) {
         earlyRepaymentHtml += field('Обязательное досрочное погашение разрешено', data.earlyRepaymentConditions.mandatoryEarlyRepaymentAllowed, 'boolean') +
@@ -192,7 +188,6 @@ const renderPdfHtml = (data: FormValues): string => {
     }
     html += section('Условия досрочного погашения', earlyRepaymentHtml || field('Условия', 'Не указаны'));
 
-    // Штрафные санкции
     let penaltyHtml = '';
     if (data.penaltySanctions) {
         penaltyHtml += field('Штраф за просрочку ОД', data.penaltySanctions.latePrincipalPaymentPenalty) +
@@ -202,7 +197,6 @@ const renderPdfHtml = (data: FormValues): string => {
     }
     html += section('Штрафные санкции за просрочку платежа', penaltyHtml || field('Санкции', 'Не указаны'));
     
-    // Информация по сублимитам
     if (data.sublimitDetails && data.sublimitDetails.length > 0) {
         let sublimitsSectionHtml = '';
         data.sublimitDetails.forEach((sl, index) => {
@@ -222,7 +216,6 @@ const renderPdfHtml = (data: FormValues): string => {
         html += section('Информация по сублимитам', field('Сублимиты', 'Отсутствуют'));
     }
 
-    // Дополнительные финансовые показатели
     let financialIndicatorsHtml = '';
     if (data.financialIndicatorsAndCalculations) {
         financialIndicatorsHtml += field('Ставка начисленных процентов (%)', formatOptionalNumber(data.financialIndicatorsAndCalculations.accruedInterestRate), 'percent') +
@@ -235,7 +228,6 @@ const renderPdfHtml = (data: FormValues): string => {
     }
     html += section('Дополнительные финансовые показатели и регламенты расчетов', financialIndicatorsHtml || field('Показатели', 'Не указаны'));
 
-    // Административные блоки
     let adminHtml = field('Итоговая категория качества кредита', data.finalCreditQualityCategory) +
                     field('Исполнитель распоряжения (ФИО)', data.dispositionExecutorName) +
                     field('Авторизованное лицо (ФИО)', data.authorizedSignatory);
@@ -285,11 +277,6 @@ export default function CreditDispositionGenerator() {
       date = parse(dateInput, 'yyyy-MM-dd', new Date());
       if (isValid(date)) return date;
       
-      // toast({ // This can be too noisy if AI often returns unparsed dates.
-      //   title: "Предупреждение о формате даты",
-      //   description: `Не удалось распознать дату "${dateInput}". Пожалуйста, выберите дату вручную.`,
-      //   variant: "default",
-      // });
       return undefined;
     }
     return undefined; 
@@ -308,23 +295,44 @@ export default function CreditDispositionGenerator() {
       (Object.keys(rawDataFromAI) as Array<keyof CreditDispositionCardData>).forEach(key => {
         const value = rawDataFromAI[key];
         if (key === 'statementDate' || key === 'contractDate') {
-          (processedFormData as any)[key] = parseDateSafe(value);
+          const parsedDate = parseDateSafe(value);
+          (processedFormData as any)[key] = parsedDate;
+          if (value && !parsedDate) {
+            toast({
+              title: "Предупреждение о формате даты",
+              description: `Не удалось автоматически распознать дату для поля '${key}'. Пожалуйста, проверьте и установите ее вручную. (Получено: "${value}")`,
+              variant: "default",
+              duration: 7000,
+            });
+          }
         } else if (key === 'commissionPaymentSchedule' && Array.isArray(value)) {
           (processedFormData as any)[key] = value.map(d => parseDateSafe(d)).filter(d => d instanceof Date && isValid(d)); 
         } else if (key === 'sublimitDetails' && Array.isArray(value)) {
-            const parsedSublimits = value.map(sl => ({
-                ...sl,
-                sublimitAmount: sl.sublimitAmount === null || sl.sublimitAmount === undefined || String(sl.sublimitAmount).trim() === "" ? null : (isNaN(parseFloat(String(sl.sublimitAmount))) ? null : parseFloat(String(sl.sublimitAmount))),
-                sublimitExpiryDate: parseDateSafe(sl.sublimitExpiryDate)
-            }));
+            const parsedSublimits = value.map(sl => {
+                const parsedSublimitDate = parseDateSafe(sl.sublimitExpiryDate);
+                if (sl.sublimitExpiryDate && !parsedSublimitDate) {
+                   toast({
+                     title: "Предупреждение о формате даты сублимита",
+                     description: `Не удалось автоматически распознать дату завершения для сублимита. Пожалуйста, проверьте и установите ее вручную. (Получено: "${sl.sublimitExpiryDate}")`,
+                     variant: "default",
+                     duration: 7000,
+                   });
+                }
+                return {
+                    ...sl,
+                    sublimitAmount: sl.sublimitAmount === null || sl.sublimitAmount === undefined || String(sl.sublimitAmount).trim() === "" ? null : (isNaN(parseFloat(String(sl.sublimitAmount))) ? null : parseFloat(String(sl.sublimitAmount))),
+                    sublimitExpiryDate: parsedSublimitDate
+                };
+            });
             (processedFormData as any)[key] = parsedSublimits;
         } else if (key === 'contractAmount') {
              processedFormData.contractAmount = value === null || value === undefined || String(value).trim() === "" ? null : (isNaN(parseFloat(String(value))) ? null : parseFloat(String(value)));
         } else if (key === 'earlyRepaymentConditions' && value && typeof value === 'object') {
+            const erc = value as any;
             processedFormData.earlyRepaymentConditions = { ...value,
-                earlyRepaymentCommissionRate: (value as any).earlyRepaymentCommissionRate === null || (value as any).earlyRepaymentCommissionRate === undefined || String((value as any).earlyRepaymentCommissionRate).trim() === ""
+                earlyRepaymentCommissionRate: erc.earlyRepaymentCommissionRate === null || erc.earlyRepaymentCommissionRate === undefined || String(erc.earlyRepaymentCommissionRate).trim() === ""
                 ? null
-                : (isNaN(parseFloat(String((value as any).earlyRepaymentCommissionRate))) ? null : parseFloat(String((value as any).earlyRepaymentCommissionRate)))
+                : (isNaN(parseFloat(String(erc.earlyRepaymentCommissionRate))) ? null : parseFloat(String(erc.earlyRepaymentCommissionRate)))
             };
         } else if (key === 'financialIndicatorsAndCalculations' && value && typeof value === 'object') {
             const finCalculations = value as any;
@@ -490,13 +498,13 @@ export default function CreditDispositionGenerator() {
   };
   
   const renderFormField = (
-    control: any, // Control object from useForm
-    name: string, // Field name, can be nested like "object.field"
+    control: any, 
+    name: string, 
     label: string, 
     type: "text" | "number" | "textarea" | "select" | "checkbox" | "date" | "dateArray", 
     options?: string[],
     description?: string,
-    isReadOnlyOverride?: boolean // To make specific sub-fields read-only
+    isReadOnlyOverride?: boolean 
   ) => {
     const readOnly = isReadOnlyOverride !== undefined ? isReadOnlyOverride : !isEditing;
     const commonInputClass = "bg-card read-only:bg-muted/30 read-only:border-transparent read-only:focus-visible:ring-0 read-only:cursor-default";
@@ -543,7 +551,7 @@ export default function CreditDispositionGenerator() {
                         </SelectTrigger>
                         <SelectContent>
                         
-                        {options.map(opt => <SelectItem key={opt} value={opt}>{opt || "Не выбрано"}</SelectItem>)}
+                        {options.filter(opt => opt !== "").map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                         </SelectContent>
                     </Select>
                     )}
