@@ -38,7 +38,7 @@ const ACCEPTABLE_FILE_EXTENSIONS = ".pdf";
 
 // Schema for individual sublimit details - must match the one in the flow
 const SublimitDetailSchema = z.object({
-  sublimitAmount: z.coerce.number().optional().nullable().describe("Сумма сублимита."),
+  sublimitAmount: z.coerce.number().optional().nullable().describe("Сумма сублимита (только числовое значение)."),
   sublimitCurrency: z.string().optional().describe("Валюта сублимита."),
   sublimitAvailabilityPeriod: z.string().optional().describe("Период доступности сублимита."),
   sublimitExpiryDate: z.union([z.date().nullable(), z.string().optional()]).optional().describe("Дата завершения действия сублимита (ГГГГ-ММ-ДД)."),
@@ -57,7 +57,7 @@ const CreditDispositionCardZodSchema = z.object({
   contractDate: z.union([z.date().nullable(), z.string().optional()]).optional(),
   creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия', '']).optional(),
   limitCurrency: z.string().optional(),
-  contractAmount: z.coerce.number().optional().nullable(),
+  contractAmount: z.coerce.number().optional().nullable().describe('Общая сумма кредита/договора или лимит кредитования (только числовое значение).'),
   bankUnitCode: z.string().optional(),
   contractTerm: z.string().optional(),
   borrowerAccountNumber: z.string().optional(),
@@ -152,7 +152,7 @@ const renderPdfHtml = (data: FormValues): string => {
                       field('Дата договора', data.contractDate, 'date') +
                       field('Вид кредитования', data.creditType) +
                       field('Валюта лимита/договора', data.limitCurrency) +
-                      field('Сумма договора', data.contractAmount, 'number') + 
+                      field('Сумма договора/лимита', data.contractAmount, 'number') + 
                       field('Код подразделения банка', data.bankUnitCode) +
                       field('Срок действия договора', data.contractTerm) +
                       field('Расчётный счёт заемщика', data.borrowerAccountNumber) +
@@ -806,7 +806,7 @@ export default function CreditDispositionGenerator() {
                       {renderFormField('contractDate', 'Дата договора', 'date')}
                       {renderFormField('creditType', 'Вид кредитования', 'select', ['Кредитная линия', 'Возобновляемая кредитная линия'])}
                       {renderFormField('limitCurrency', 'Валюта лимита/договора', 'text')}
-                      {renderFormField('contractAmount', 'Сумма договора', 'number')}
+                      {renderFormField('contractAmount', 'Сумма договора/лимита', 'number')}
                       {renderFormField('bankUnitCode', 'Код подразделения банка', 'text')}
                       {renderFormField('contractTerm', 'Срок действия договора', 'text')}
                       {renderFormField('borrowerAccountNumber', 'Расчётный счёт заемщика', 'text')}

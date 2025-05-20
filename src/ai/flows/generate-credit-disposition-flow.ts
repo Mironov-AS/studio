@@ -25,7 +25,7 @@ export type GenerateCreditDispositionInput = z.infer<typeof GenerateCreditDispos
 
 // Schema for individual sublimit details
 const SublimitDetailSchema = z.object({
-  sublimitAmount: z.coerce.number().optional().describe("Сумма сублимита (только числовое значение)."),
+  sublimitAmount: z.coerce.number().optional().nullable().describe("Сумма сублимита (только числовое значение)."),
   sublimitCurrency: z.string().optional().describe("Валюта сублимита."),
   sublimitAvailabilityPeriod: z.string().optional().describe("Период доступности сублимита."),
   sublimitExpiryDate: z.union([z.date(), z.string()]).optional().describe("Дата завершения действия сублимита (ГГГГ-ММ-ДД)."),
@@ -46,7 +46,7 @@ const CreditDispositionCardZodSchema = z.object({
   contractDate: z.union([z.date(), z.string()]).optional().describe('Дата подписания договора (ГГГГ-ММ-ДД).'),
   creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия']).optional().describe('Тип кредита.'),
   limitCurrency: z.string().optional().describe('Валюта кредитного лимита/общей суммы договора (например, RUB, USD).'),
-  contractAmount: z.coerce.number().optional().describe('Общая сумма кредита/договора (только числовое значение).'),
+  contractAmount: z.coerce.number().optional().describe('Общая сумма кредита/договора или лимит кредитования (только числовое значение).'),
   bankUnitCode: z.string().optional().describe('Код подразделения банка, в котором обслуживается заемщик.'),
   contractTerm: z.string().optional().describe('Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").'),
   borrowerAccountNumber: z.string().optional().describe('Банковский расчётный счёт заемщика.'),
@@ -142,7 +142,7 @@ const prompt = ai.definePrompt({
 - contractDate: Дата подписания договора (ГГГГ-ММ-ДД).
 - creditType: Тип кредита (одно из: "Кредитная линия", "Возобновляемая кредитная линия").
 - limitCurrency: Валюта кредитного лимита/общей суммы договора.
-- contractAmount: Общая сумма кредита/договора (только числовое значение, например, 1500000.75, без текста или символов валют).
+- contractAmount: Общая сумма кредита/договора или установленный лимит кредитования (только числовое значение, например, 1500000.75, без текста или символов валют).
 - bankUnitCode: Код подразделения банка, в котором обслуживается заемщик.
 - contractTerm: Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").
 - borrowerAccountNumber: Банковский расчётный счёт заемщика.
