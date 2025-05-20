@@ -15,10 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { generateCreditDisposition, type GenerateCreditDispositionInput, type GenerateCreditDispositionOutput, type CreditDispositionCardData, type SublimitDetail } from '@/ai/flows/generate-credit-disposition-flow';
-import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2, CalendarIcon as LucideCalendarIcon, PackageOpen, CircleDollarSign, TrendingDown, ShieldAlert, Info, BookOpen, Users2, PlusCircle } from 'lucide-react'; // Renamed CalendarIcon to avoid conflict
+import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2, CalendarIcon as LucideCalendarIcon, PackageOpen, CircleDollarSign, TrendingDown, ShieldAlert, Info, BookOpen, Users2, PlusCircle } from 'lucide-react';
 import { exportHtmlElementToPdf } from '@/lib/pdfUtils';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as ShadCalendar } from "@/components/ui/calendar"; // Renamed Calendar to avoid conflict
+import { Calendar as ShadCalendar } from "@/components/ui/calendar"; 
 import { format, parseISO, isValid, parse } from "date-fns";
 import { ru } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -77,7 +77,7 @@ const CreditDispositionCardZodSchemaClient = z.object({
     earlyRepaymentFundingSources: z.string().optional(),
     earlyRepaymentCommissionRate: z.coerce.number().optional().nullable(),
     principalAndInterestRepaymentOrder: z.string().optional(),
-    earlyRepaymentMoratoriumDetails: z.string().optional().describe("Ограничительные моратории на возможность досрочно погасить долг (описание условий или \"Отсутствует\")."),
+    earlyRepaymentMoratoriumDetails: z.string().optional(),
   }).optional().default({}),
   penaltySanctions: z.object({
     latePrincipalPaymentPenalty: z.string().optional(),
@@ -356,11 +356,11 @@ export default function CreditDispositionGenerator() {
       const defaultValuesFromForm = form.formState.defaultValues || {};
       
       const processedFormData: Partial<FormValues> = {
-        ...defaultValuesFromForm, // Start with form defaults
+        ...defaultValuesFromForm, 
         earlyRepaymentConditions: { ...(defaultValuesFromForm.earlyRepaymentConditions || {}), ...rawDataFromAI.earlyRepaymentConditions },
         penaltySanctions: { ...(defaultValuesFromForm.penaltySanctions || {}), ...rawDataFromAI.penaltySanctions },
         financialIndicatorsAndCalculations: { ...(defaultValuesFromForm.financialIndicatorsAndCalculations || {}), ...rawDataFromAI.financialIndicatorsAndCalculations },
-        sublimitDetails: [],
+        sublimitDetails: [], 
       };
 
       (Object.keys(rawDataFromAI) as Array<keyof CreditDispositionCardData>).forEach(key => {
@@ -396,8 +396,17 @@ export default function CreditDispositionGenerator() {
                 };
             });
             (processedFormData as any)[key] = parsedSublimits;
-        } else if (key === 'contractAmount') {
-             processedFormData.contractAmount = parseNumberSafe(value);
+        } else if (key === 'contractAmount' || key === 'earlyRepaymentConditions.earlyRepaymentCommissionRate' || key === 'financialIndicatorsAndCalculations.accruedInterestRate' || key === 'financialIndicatorsAndCalculations.capitalizedInterestRate' ) {
+             // Handle nested number fields correctly by parsing them
+             if (key === 'contractAmount') {
+                 processedFormData.contractAmount = parseNumberSafe(value);
+             } else if (key === 'earlyRepaymentConditions.earlyRepaymentCommissionRate' && processedFormData.earlyRepaymentConditions) {
+                 processedFormData.earlyRepaymentConditions.earlyRepaymentCommissionRate = parseNumberSafe(value);
+             } else if (key === 'financialIndicatorsAndCalculations.accruedInterestRate' && processedFormData.financialIndicatorsAndCalculations) {
+                processedFormData.financialIndicatorsAndCalculations.accruedInterestRate = parseNumberSafe(value);
+             } else if (key === 'financialIndicatorsAndCalculations.capitalizedInterestRate' && processedFormData.financialIndicatorsAndCalculations) {
+                processedFormData.financialIndicatorsAndCalculations.capitalizedInterestRate = parseNumberSafe(value);
+             }
         } else if (key === 'earlyRepaymentConditions' && typeof value === 'object' && value !== null) {
              processedFormData.earlyRepaymentConditions = {
                 ...(defaultValuesFromForm.earlyRepaymentConditions || {}),
@@ -428,10 +437,10 @@ export default function CreditDispositionGenerator() {
       
       form.reset(processedFormData as FormValues);
       setIsEditing(false); 
-      if (!rawDataFromAI.borrowerName && !rawDataFromAI.contractNumber) {
+      if (!rawDataFromAI.borrowerName && !rawDataFromAI.contractNumber && (rawDataFromAI.contractAmount === null || rawDataFromAI.contractAmount === undefined)) {
          toast({
             title: "Внимание: Низкая точность извлечения",
-            description: "Не удалось извлечь ключевые данные (Имя заемщика или Номер договора). Возможно, документ сложный для анализа или имеет нестандартный формат. Пожалуйста, проверьте все поля вручную.",
+            description: "Не удалось извлечь ключевые данные (Имя заемщика, Номер или Сумма договора). Возможно, документ сложный для анализа или имеет нестандартный формат. Пожалуйста, проверьте все поля вручную.",
             variant: "destructive",
             duration: 10000, 
           });
@@ -450,7 +459,7 @@ export default function CreditDispositionGenerator() {
       }
       setFile(selectedFile);
       setExtractedData(null);
-      form.reset(form.formState.defaultValues); // Reset to defined default values
+      form.reset(form.formState.defaultValues); 
       setFileDataUri(null);
 
       const reader = new FileReader();
@@ -496,7 +505,7 @@ export default function CreditDispositionGenerator() {
         const updatedCardData = { 
             ...values, 
             sublimitDetails: sublimitDetailsWithNumbers 
-        } as CreditDispositionCardData; // Cast here, assuming FormValues is compatible
+        } as CreditDispositionCardData; 
         return { ...prev, dispositionCard: updatedCardData };
     });
 
@@ -973,6 +982,3 @@ export default function CreditDispositionGenerator() {
     </div>
   );
 }
-
-
-      

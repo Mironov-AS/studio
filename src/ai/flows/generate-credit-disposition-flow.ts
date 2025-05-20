@@ -35,7 +35,7 @@ const SublimitDetailSchema = z.object({
 });
 export type SublimitDetail = z.infer<typeof SublimitDetailSchema>;
 
-// Local schema for the disposition card. Not exported as an object.
+// Zod schema for the disposition card for AI guidance
 const CreditDispositionCardZodSchema = z.object({
   // Общие элементы
   statementNumber: z.string().optional().describe('Уникальный идентификатор заявки (Номер заявления в кредитной дороге).'),
@@ -46,7 +46,9 @@ const CreditDispositionCardZodSchema = z.object({
   contractDate: z.union([z.date().nullable(), z.string().optional()]).optional().describe('Дата подписания договора (ГГГГ-ММ-ДД).'),
   creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия']).optional().describe('Тип кредита (например, "Кредитная линия", "Возобновляемая кредитная линия").'),
   limitCurrency: z.string().optional().describe('Валюта кредитного лимита/общей суммы договора (например, RUB, USD).'),
-  contractAmount: z.coerce.number().optional().nullable().describe('Общая сумма кредита/договора или лимит кредитования (только числовое значение, например, 1500000.75).'),
+  contractAmount: z.coerce.number().optional().nullable().describe(
+    'ОБЯЗАТЕЛЬНО ИЗВЛЕЧЬ! Общая сумма кредита/договора или установленный лимит кредитования. Ищите это значение в разделах, описывающих финансовые условия, сумму кредита, лимит кредитной линии. Часто обозначается как "Сумма Договора", "Лимит Кредитования", "Сумма кредита составляет". Извлеките ТОЛЬКО ЧИСЛОВОЕ ЗНАЧЕНИЕ (например, 1500000.75), без текста, валюты или разделителей тысяч. Если не найдено, оставьте поле пустым, но постарайтесь найти.'
+  ),
   bankUnitCode: z.string().optional().describe('Код подразделения банка, в котором обслуживается заемщик.'),
   contractTerm: z.string().optional().describe('Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").'),
   borrowerAccountNumber: z.string().optional().describe('Банковский расчётный счёт заемщика.'),
@@ -144,7 +146,7 @@ const prompt = ai.definePrompt({
 - contractDate: Дата подписания договора (ГГГГ-ММ-ДД).
 - creditType: Тип кредита (одно из: "Кредитная линия", "Возобновляемая кредитная линия").
 - limitCurrency: Валюта кредитного лимита/общей суммы договора (например, RUB, USD).
-- contractAmount: Общая сумма кредита/договора или установленный лимит кредитования (только числовое значение, например, 1500000.75).
+- contractAmount: ОБЯЗАТЕЛЬНО ИЗВЛЕЧЬ! Общая сумма кредита/договора или установленный лимит кредитования. Ищите это значение в разделах, описывающих финансовые условия, сумму кредита, лимит кредитной линии. Часто обозначается как "Сумма Договора", "Лимит Кредитования", "Сумма кредита составляет". Извлеките ТОЛЬКО ЧИСЛОВОЕ ЗНАЧЕНИЕ (например, 1500000.75), без текста, валюты или разделителей тысяч. Если не найдено, оставьте поле пустым, но постарайтесь найти.
 - bankUnitCode: Код подразделения банка, в котором обслуживается заемщик.
 - contractTerm: Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").
 - borrowerAccountNumber: Банковский расчётный счёт заемщика.
@@ -238,12 +240,9 @@ const generateCreditDispositionFlow = ai.defineFlow(
         const output = result.output;
 
         if (output && output.dispositionCard) {
-          // Ensure arrays exist, even if empty, and nested objects are initialized if not present
-          // This matches the .default({}) or .default([]) in the Zod schema for client-side form stability.
           output.dispositionCard.sublimitDetails = output.dispositionCard.sublimitDetails || [];
           output.dispositionCard.commissionPaymentSchedule = output.dispositionCard.commissionPaymentSchedule || [];
           
-          // Ensure nested objects exist, even if empty, before accessing their properties or passing to form
           output.dispositionCard.earlyRepaymentConditions = output.dispositionCard.earlyRepaymentConditions || {
             mandatoryEarlyRepaymentAllowed: undefined,
             voluntaryEarlyRepaymentAllowed: undefined,
@@ -268,9 +267,15 @@ const generateCreditDispositionFlow = ai.defineFlow(
             specialContractConditions: undefined,
           };
           
-          // Check for at least some critical fields, simple retry trigger
-          if (!output.dispositionCard.borrowerName && !output.dispositionCard.contractNumber && attempt < MAX_RETRIES -1) {
-            console.warn(`Attempt ${attempt + 1}: Critical fields missing (borrowerName or contractNumber). Retrying...`);
+          // Check for critical fields, including contractAmount, for retry
+          if (
+            (!output.dispositionCard.borrowerName || 
+             !output.dispositionCard.contractNumber || 
+             output.dispositionCard.contractAmount === null || 
+             output.dispositionCard.contractAmount === undefined
+            ) && attempt < MAX_RETRIES -1
+          ) {
+            console.warn(`Attempt ${attempt + 1}: Critical fields (borrowerName, contractNumber, or contractAmount) missing. Retrying...`);
             const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
             await new Promise(resolve => setTimeout(resolve, delay));
             attempt++;
@@ -313,6 +318,3 @@ const generateCreditDispositionFlow = ai.defineFlow(
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
-
-
-      
