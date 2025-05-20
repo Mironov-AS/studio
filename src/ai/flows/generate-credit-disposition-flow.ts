@@ -44,24 +44,24 @@ const CreditDispositionCardZodSchema = z.object({
   borrowerInn: z.string().optional().describe('ИНН заемщика.'),
   contractNumber: z.string().optional().describe('Номер подписанного кредитного договора.'),
   contractDate: z.union([z.date().nullable(), z.string().optional()]).optional().describe('Дата подписания договора (ГГГГ-ММ-ДД).'),
-  creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия', '']).optional().describe('Тип кредита (например, "Кредитная линия", "Возобновляемая кредитная линия").'),
+  creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия']).optional().describe('Тип кредита (например, "Кредитная линия", "Возобновляемая кредитная линия").'),
   limitCurrency: z.string().optional().describe('Валюта кредитного лимита/общей суммы договора (например, RUB, USD).'),
   contractAmount: z.coerce.number().optional().nullable().describe('Общая сумма кредита/договора или лимит кредитования (только числовое значение, например, 1500000.75).'),
   bankUnitCode: z.string().optional().describe('Код подразделения банка, в котором обслуживается заемщик.'),
   contractTerm: z.string().optional().describe('Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").'),
   borrowerAccountNumber: z.string().optional().describe('Банковский расчётный счёт заемщика.'),
-  enterpriseCategory: z.enum(['Среднее', 'Малое', 'Микро', 'Не применимо', '']).optional().describe('Признак субъекта МСП или "Не применимо".'),
+  enterpriseCategory: z.enum(['Среднее', 'Малое', 'Микро', 'Не применимо']).optional().describe('Признак субъекта МСП или "Не применимо".'),
   creditCommitteeDecisionDetails: z.string().optional().describe('Детали решения кредитного комитета (например, номер протокола, дата). Если просто "да/нет", указать "Решение принято" или "Решение отсутствует".'),
   subsidyAgent: z.string().optional().describe('Организация, предоставляющая субсидии.'),
   generalNotesAndSpecialConditions: z.string().optional().describe('Общие дополнительные примечания и особые условия (например, наличие субсидий, льготных ставок).'),
 
   // Элементы, специфичные для бухгалтерского учета по стандартам МСФО
   sppiTestResult: z.string().optional().describe('Результат SPPI-теста (например, "Пройден успешно", "Не пройден", "Соответствует критериям SPPI").'),
-  assetOwnershipBusinessModel: z.enum(['Удерживать для продажи', 'Удерживать для получения денежных потоков', 'Иное', '']).optional().describe('Бизнес-модель владения активом (например, "Удерживать для продажи", "Удерживать для получения денежных потоков", "Иное").'),
-  marketTransactionAssessment: z.enum(['Рыночная', 'Нерыночная', 'Не удалось определить', '']).optional().describe('Оценка рыночности сделки (рыночной стоимости договора) (например, "Рыночная", "Нерыночная", "Не удалось определить").'),
+  assetOwnershipBusinessModel: z.enum(['Удерживать для продажи', 'Удерживать для получения денежных потоков', 'Иное']).optional().describe('Бизнес-модель владения активом (например, "Удерживать для продажи", "Удерживать для получения денежных потоков", "Иное").'),
+  marketTransactionAssessment: z.enum(['Рыночная', 'Нерыночная', 'Не удалось определить']).optional().describe('Оценка рыночности сделки (рыночной стоимости договора) (например, "Рыночная", "Нерыночная", "Не удалось определить").'),
 
   // Комиссионные сборы по договору
-  commissionType: z.enum(["Фиксированная", "Переменная", "Отсутствует", "Комбинированная", ""]).optional().describe("Вид комиссии (например, \"Фиксированная\", \"Переменная\", \"Отсутствует\", \"Комбинированная\")."),
+  commissionType: z.enum(["Фиксированная", "Переменная", "Отсутствует", "Комбинированная"]).optional().describe("Вид комиссии (например, \"Фиксированная\", \"Переменная\", \"Отсутствует\", \"Комбинированная\")."),
   commissionCalculationMethod: z.string().optional().describe("Порядок расчета сумм комиссий (алгоритм вычисления или конкретные цифры, например '0.5% от суммы выдачи', '10000 RUB единовременно')."),
   commissionPaymentSchedule: z.array(z.union([z.date(), z.string()])).optional().describe("Графики платежей комиссий (массив дат в формате ГГГГ-ММ-ДД)."),
   
@@ -98,7 +98,7 @@ const CreditDispositionCardZodSchema = z.object({
   }).optional().describe("Финансовые показатели и регламенты."),
 
   // Административные блоки
-  finalCreditQualityCategory: z.enum(['Хорошее', 'Проблемное', 'Просроченное', 'Не определена', '']).optional().describe('Итоговая категория качества кредита (соответствие нормам ЦБ) или "Не определена".'),
+  finalCreditQualityCategory: z.enum(['Хорошее', 'Проблемное', 'Просроченное', 'Не определена']).optional().describe('Итоговая категория качества кредита (соответствие нормам ЦБ) или "Не определена".'),
   dispositionExecutorName: z.string().optional().describe('ФИО сотрудника, подготовившего распоряжение.'),
   authorizedSignatory: z.string().optional().describe('Лицо, имеющее полномочия подписи от банка (ФИО).'),
 });
@@ -144,7 +144,7 @@ const prompt = ai.definePrompt({
 - contractDate: Дата подписания договора (ГГГГ-ММ-ДД).
 - creditType: Тип кредита (одно из: "Кредитная линия", "Возобновляемая кредитная линия").
 - limitCurrency: Валюта кредитного лимита/общей суммы договора (например, RUB, USD).
-- contractAmount: Общая сумма кредита/договора или установленный лимит кредитования (только числовое значение).
+- contractAmount: Общая сумма кредита/договора или установленный лимит кредитования (только числовое значение, например, 1500000.75).
 - bankUnitCode: Код подразделения банка, в котором обслуживается заемщик.
 - contractTerm: Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").
 - borrowerAccountNumber: Банковский расчётный счёт заемщика.
@@ -242,9 +242,31 @@ const generateCreditDispositionFlow = ai.defineFlow(
           // This matches the .default({}) or .default([]) in the Zod schema for client-side form stability.
           output.dispositionCard.sublimitDetails = output.dispositionCard.sublimitDetails || [];
           output.dispositionCard.commissionPaymentSchedule = output.dispositionCard.commissionPaymentSchedule || [];
-          output.dispositionCard.earlyRepaymentConditions = output.dispositionCard.earlyRepaymentConditions || {};
-          output.dispositionCard.penaltySanctions = output.dispositionCard.penaltySanctions || {};
-          output.dispositionCard.financialIndicatorsAndCalculations = output.dispositionCard.financialIndicatorsAndCalculations || {};
+          
+          // Ensure nested objects exist, even if empty, before accessing their properties or passing to form
+          output.dispositionCard.earlyRepaymentConditions = output.dispositionCard.earlyRepaymentConditions || {
+            mandatoryEarlyRepaymentAllowed: undefined,
+            voluntaryEarlyRepaymentAllowed: undefined,
+            earlyRepaymentFundingSources: undefined,
+            earlyRepaymentCommissionRate: undefined,
+            principalAndInterestRepaymentOrder: undefined,
+            earlyRepaymentMoratoriumDetails: undefined,
+          };
+          output.dispositionCard.penaltySanctions = output.dispositionCard.penaltySanctions || {
+            latePrincipalPaymentPenalty: undefined,
+            lateInterestPaymentPenalty: undefined,
+            lateCommissionPaymentPenalty: undefined,
+            penaltyIndexation: undefined,
+          };
+          output.dispositionCard.financialIndicatorsAndCalculations = output.dispositionCard.financialIndicatorsAndCalculations || {
+            accruedInterestRate: undefined,
+            capitalizedInterestRate: undefined,
+            accruedInterestCalculationRules: undefined,
+            interestPaymentRegulations: undefined,
+            debtAndCommissionReservingParams: undefined,
+            insuranceProductCodes: undefined,
+            specialContractConditions: undefined,
+          };
           
           // Check for at least some critical fields, simple retry trigger
           if (!output.dispositionCard.borrowerName && !output.dispositionCard.contractNumber && attempt < MAX_RETRIES -1) {
@@ -291,3 +313,6 @@ const generateCreditDispositionFlow = ai.defineFlow(
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
+
+
+      
