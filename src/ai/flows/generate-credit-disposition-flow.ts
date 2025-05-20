@@ -63,9 +63,9 @@ const CreditDispositionCardZodSchema = z.object({
   marketTransactionAssessment: z.enum(['Рыночная', 'Нерыночная', 'Не удалось определить']).optional().describe('Оценка рыночности сделки (рыночной стоимости договора) (выбрать из: "Рыночная", "Нерыночная", "Не удалось определить"). Внутренняя оценка.'),
 
   // Комиссионные сборы по договору
-  commissionType: z.enum(["Фиксированная", "Переменная", "Отсутствует", "Комбинированная"]).optional().describe("Вид комиссии (выбрать из: \"Фиксированная\", \"Переменная\", \"Отсутствует\", \"Комбинированная\"). Искать в разделе о комиссиях или тарифах."),
+  commissionType: z.enum(["Фиксированная", "Переменная", "Отсутствует", "Комбинированная"]).optional().describe("Вид комиссии (выбрать из: 'Фиксированная', 'Переменная', 'Отсутствует', 'Комбинированная'). Искать в разделе о комиссиях или тарифах."),
   commissionCalculationMethod: z.string().optional().describe("Порядок расчета сумм комиссий (алгоритм вычисления или конкретные цифры, например '0.5% от суммы выдачи', '10000 RUB единовременно'). Искать в разделе о комиссиях."),
-  commissionPaymentSchedule: z.array(z.union([z.date(), z.string()])).optional().describe("Графики платежей комиссий (массив дат в формате ГГГГ-ММ-ДД или текстовых описаний сроков). Искать в условиях оплаты комиссий."),
+  commissionPaymentSchedule: z.array(z.union([z.date(), z.string()])).optional().default([]).describe("Графики платежей комиссий (массив дат в формате ГГГГ-ММ-ДД или текстовых описаний сроков). Искать в условиях оплаты комиссий."),
   
   // Условия досрочного погашения
   earlyRepaymentConditions: z.object({
@@ -79,9 +79,9 @@ const CreditDispositionCardZodSchema = z.object({
 
   // Штрафные санкции за просрочку платежа
   penaltySanctions: z.object({
-    latePrincipalPaymentPenalty: z.string().optional().describe("Размеры штрафов за несвоевременную оплату основной части займа (например, \"0.1% в день от суммы просрочки\", \"Фиксированная сумма 5000 RUB\"). Искать в разделе 'Ответственность сторон' или 'Штрафные санкции'."),
-    lateInterestPaymentPenalty: z.string().optional().describe("Размеры санкций за задержку оплаты начисленных процентов (например, \"Аналогично штрафу за просрочку ОД\"). Искать там же."),
-    lateCommissionPaymentPenalty: z.string().optional().describe("Штрафы за неоплату комиссий (например, \"0.05% в день от суммы неоплаченной комиссии\"). Искать там же."),
+    latePrincipalPaymentPenalty: z.string().optional().describe("Размеры штрафов за несвоевременную оплату основной части займа (например, '0.1% в день от суммы просрочки', 'Фиксированная сумма 5000 RUB'). Искать в разделе 'Ответственность сторон' или 'Штрафные санкции'."),
+    lateInterestPaymentPenalty: z.string().optional().describe("Размеры санкций за задержку оплаты начисленных процентов (например, 'Аналогично штрафу за просрочку ОД'). Искать там же."),
+    lateCommissionPaymentPenalty: z.string().optional().describe("Штрафы за неоплату комиссий (например, '0.05% в день от суммы неоплаченной комиссии'). Искать там же."),
     penaltyIndexation: z.boolean().optional().describe('Применяется ли увеличение размера неустойки (true/false). Искать в условиях о штрафах.'),
   }).optional().default({}).describe("Детали штрафных санкций. Если раздел отсутствует, этот объект можно опустить."),
 
@@ -161,7 +161,7 @@ const prompt = ai.definePrompt({
 - marketTransactionAssessment: Оценка рыночности сделки (рыночной стоимости договора) (выбрать из: "Рыночная", "Нерыночная", "Не удалось определить"). Внутренняя оценка.
 
 **Комиссионные сборы:**
-- commissionType: Вид комиссии (выбрать из: "Фиксированная", "Переменная", "Отсутствует", "Комбинированная"). Искать в разделе о комиссиях или тарифах.
+- commissionType: Вид комиссии (выбрать из: 'Фиксированная', 'Переменная', 'Отсутствует', 'Комбинированная'). Искать в разделе о комиссиях или тарифах.
 - commissionCalculationMethod: Порядок расчета сумм комиссий (алгоритм вычисления или конкретные цифры, например '0.5% от суммы выдачи', '10000 RUB единовременно'). Искать в разделе о комиссиях.
 - commissionPaymentSchedule: Графики платежей комиссий (массив дат в формате ГГГГ-ММ-ДД или текстовых описаний сроков). Искать в условиях оплаты комиссий.
 
@@ -174,9 +174,9 @@ const prompt = ai.definePrompt({
 - earlyRepaymentMoratoriumDetails: Ограничительные моратории на возможность досрочно погасить долг (описание условий или "Отсутствует"). Искать в условиях досрочного погашения.
 
 **Штрафные санкции (объект penaltySanctions):**
-- latePrincipalPaymentPenalty: Размеры штрафов за несвоевременную оплату основной части займа (например, "0.1% в день от суммы просрочки", "Фиксированная сумма 5000 RUB"). Искать в разделе 'Ответственность сторон' или 'Штрафные санкции'.
-- lateInterestPaymentPenalty: Размеры санкций за задержку оплаты начисленных процентов (например, "Аналогично штрафу за просрочку ОД"). Искать там же.
-- lateCommissionPaymentPenalty: Штрафы за неоплату комиссий (например, "0.05% в день от суммы неоплаченной комиссии"). Искать там же.
+- latePrincipalPaymentPenalty: Размеры штрафов за несвоевременную оплату основной части займа (например, '0.1% в день от суммы просрочки', 'Фиксированная сумма 5000 RUB'). Искать в разделе 'Ответственность сторон' или 'Штрафные санкции'.
+- lateInterestPaymentPenalty: Размеры санкций за задержку оплаты начисленных процентов (например, 'Аналогично штрафу за просрочку ОД'). Искать там же.
+- lateCommissionPaymentPenalty: Штрафы за неоплату комиссий (например, '0.05% в день от суммы неоплаченной комиссии'). Искать там же.
 - penaltyIndexation: Применяется ли увеличение размера неустойки (true/false). Искать в условиях о штрафах.
 
 **Информация по сублимитам (массив объектов sublimitDetails). Если сублимиты не найдены, оставьте sublimitDetails пустым массивом:**
@@ -224,12 +224,13 @@ const generateCreditDispositionFlow = ai.defineFlow(
     const MAX_RETRIES = 3;
     const INITIAL_DELAY_MS = 1500; 
     let attempt = 0;
+    let lastErrorEncountered: any = null;
 
     while (attempt < MAX_RETRIES) {
       try {
         const result = await prompt(input, {
           config: {
-            safetySettings: [ // Relaxed safety settings for legal/financial documents
+            safetySettings: [ 
               { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
               { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
               { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' }, 
@@ -240,29 +241,25 @@ const generateCreditDispositionFlow = ai.defineFlow(
         const output = result.output;
 
         if (output && output.dispositionCard) {
-          // Ensure nested objects and arrays are initialized if AI omits them
           output.dispositionCard.earlyRepaymentConditions = output.dispositionCard.earlyRepaymentConditions || {};
           output.dispositionCard.penaltySanctions = output.dispositionCard.penaltySanctions || {};
           output.dispositionCard.financialIndicatorsAndCalculations = output.dispositionCard.financialIndicatorsAndCalculations || {};
           output.dispositionCard.sublimitDetails = output.dispositionCard.sublimitDetails || [];
           output.dispositionCard.commissionPaymentSchedule = output.dispositionCard.commissionPaymentSchedule || [];
           
-          // Fallback for contractAmount: sum of sublimits if contractAmount is not found by AI
           if ((output.dispositionCard.contractAmount === null || output.dispositionCard.contractAmount === undefined) &&
               output.dispositionCard.sublimitDetails && output.dispositionCard.sublimitDetails.length > 0) {
             let sumOfSublimits = 0;
             for (const sl of output.dispositionCard.sublimitDetails) {
-              if (typeof sl.sublimitAmount === 'number') {
-                sumOfSublimits += sl.sublimitAmount;
-              }
+              const amount = typeof sl.sublimitAmount === 'number' ? sl.sublimitAmount : 0;
+              sumOfSublimits += amount;
             }
             if (sumOfSublimits > 0) {
               output.dispositionCard.contractAmount = sumOfSublimits;
-              console.log(`Calculated contractAmount as sum of sublimits: ${sumOfSublimits}`);
+              console.log(`[Flow] Calculated contractAmount as sum of sublimits: ${sumOfSublimits}`);
             }
           }
           
-          // Enhanced retry condition: check for critical fields including contractAmount now
           if (
             attempt < MAX_RETRIES -1 && 
             (!output.dispositionCard.borrowerName || 
@@ -271,47 +268,67 @@ const generateCreditDispositionFlow = ai.defineFlow(
              output.dispositionCard.contractAmount === undefined
             )
           ) {
-            console.warn(`Attempt ${attempt + 1}: Critical fields (borrowerName, contractNumber, or contractAmount) missing. Retrying...`);
+            console.warn(`[Flow] Attempt ${attempt + 1}: Critical fields (borrowerName, contractNumber, or contractAmount) missing. Retrying...`);
+            lastErrorEncountered = new Error('Critical fields missing in AI response after attempt ' + (attempt + 1));
             const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
             await new Promise(resolve => setTimeout(resolve, delay));
             attempt++;
             continue; 
           }
-          return output;
+          return output; 
         }
         
+        lastErrorEncountered = new Error(`AI did not return expected dispositionCard structure on attempt ${attempt + 1}.`);
         if (attempt === MAX_RETRIES - 1) {
-          throw new Error('AI не вернул ожидаемый результат (dispositionCard) после нескольких попыток.');
+           break; 
         }
 
       } catch (e: any) {
-        const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : JSON.stringify(e);
+        lastErrorEncountered = e; 
+        let errorMessageDetail = 'Unknown error';
+        if (e && e.message) {
+            errorMessageDetail = String(e.message).toLowerCase();
+        } else if (e) {
+            try {
+                errorMessageDetail = JSON.stringify(e).toLowerCase();
+            } catch (jsonError) {
+                errorMessageDetail = 'Error object could not be stringified.';
+            }
+        }
+        
+        console.error(`[Flow] Attempt ${attempt + 1} caught error: ${errorMessageDetail}`, e);
+
         const isRetryableError = 
-          errorMessage.includes('503') || 
-          errorMessage.includes('overloaded') || 
-          errorMessage.includes('service unavailable') ||
-          errorMessage.includes('rate limit') || 
-          errorMessage.includes('resource has been exhausted') || 
-          errorMessage.includes('deadline exceeded') || 
-          errorMessage.includes('internal error') || 
-          errorMessage.includes('try again later') ||
-          errorMessage.includes('429'); 
+          errorMessageDetail.includes('503') || 
+          errorMessageDetail.includes('overloaded') || 
+          errorMessageDetail.includes('service unavailable') ||
+          errorMessageDetail.includes('rate limit') || 
+          errorMessageDetail.includes('resource has been exhausted') || 
+          errorMessageDetail.includes('deadline exceeded') || 
+          errorMessageDetail.includes('try again later') ||
+          errorMessageDetail.includes('429'); 
         
         if (isRetryableError) {
           if (attempt === MAX_RETRIES - 1) {
-            throw new Error('Сервис временно перегружен или достигнут лимит запросов. Пожалуйста, попробуйте позже.');
+            break; 
           }
           const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
-          console.warn(`Attempt ${attempt + 1}: Retryable error encountered: ${errorMessage}. Retrying in ${delay/1000}s...`);
+          console.warn(`[Flow] Retryable error encountered. Retrying in ${delay/1000}s... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          console.error("Non-retryable error in generateCreditDispositionFlow:", e);
+          console.error("[Flow] Non-retryable error in generateCreditDispositionFlow, throwing now:", e);
           throw e; 
         }
       }
       attempt++;
     }
-    throw new Error('Не удалось получить ответ от AI после всех попыток.');
+
+    let finalErrorMessage = `Не удалось получить корректный ответ от AI для распоряжения после ${MAX_RETRIES} попыток.`;
+    if (lastErrorEncountered) {
+        const message = lastErrorEncountered.message || (typeof lastErrorEncountered.toString === 'function' ? lastErrorEncountered.toString() : JSON.stringify(lastErrorEncountered));
+        finalErrorMessage += ` Последняя ошибка: ${message}`;
+    }
+    console.error("[Flow] All retries failed for generateCreditDispositionFlow.", finalErrorMessage);
+    throw new Error(finalErrorMessage);
   }
 );
-
