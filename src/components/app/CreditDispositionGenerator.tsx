@@ -16,11 +16,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 // Import types, but not the schema object from the flow
 import { generateCreditDisposition, type GenerateCreditDispositionInput, type GenerateCreditDispositionOutput, type CreditDispositionCardData } from '@/ai/flows/generate-credit-disposition-flow';
-import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2, CalendarIcon } from 'lucide-react'; // Added CalendarIcon
+import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2, CalendarIcon } from 'lucide-react';
 import { exportHtmlElementToPdf } from '@/lib/pdfUtils';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, isValid, parse } from "date-fns";
 import { ru } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import {
@@ -86,26 +86,62 @@ export default function CreditDispositionGenerator() {
 
   useEffect(() => {
     if (extractedData) {
-      // Dates might come as strings, convert them to Date objects for react-hook-form and Calendar
-      const formData: Partial<CreditDispositionCardData> = { ...extractedData.dispositionCard };
-      if (formData.statementDate && typeof formData.statementDate === 'string') {
-        try { formData.statementDate = parseISO(formData.statementDate) as any; } catch (e) { /* keep as string if unparseable */ }
-      }
-      if (formData.contractDate && typeof formData.contractDate === 'string') {
-         try { formData.contractDate = parseISO(formData.contractDate) as any; } catch (e) { /* keep as string if unparseable */ }
-      }
-      if (formData.commissionPaymentSchedule && Array.isArray(formData.commissionPaymentSchedule)) {
-        formData.commissionPaymentSchedule = formData.commissionPaymentSchedule.map(d => {
-          if (typeof d === 'string') {
-            try { return parseISO(d) as any; } catch (e) { return d; }
-          }
-          return d;
-        });
-      }
-      form.reset(formData as FormValues); // Cast to FormValues
-      setIsEditing(false); // Start in view mode after data extraction
+      const rawDataFromAI = extractedData.dispositionCard;
+      const processedFormData: Partial<FormValues> = {};
+
+      // Helper to parse various date string formats or return undefined
+      const parseDateSafe = (dateInput: any): Date | undefined => {
+        if (!dateInput) return undefined;
+        if (dateInput instanceof Date && isValid(dateInput)) return dateInput;
+        
+        if (typeof dateInput === 'string') {
+          let date = parseISO(dateInput); // Try ISO
+          if (isValid(date)) return date;
+
+          // Try DD.MM.YYYY
+          date = parse(dateInput, 'dd.MM.yyyy', new Date());
+          if (isValid(date)) return date;
+          
+          // Try YYYY-MM-DD (if AI provides it this way sometimes)
+           date = parse(dateInput, 'yyyy-MM-dd', new Date());
+           if (isValid(date)) return date;
+
+          // If still not parsed, warn and return undefined
+          toast({
+            title: "Предупреждение о формате даты",
+            description: `Не удалось распознать дату "${dateInput}". Пожалуйста, выберите дату вручную.`,
+            variant: "default",
+          });
+          return undefined;
+        }
+        return undefined; // Not a string or Date, or invalid Date object
+      };
+      
+      // Process each field from the raw AI data
+      (Object.keys(rawDataFromAI) as Array<keyof CreditDispositionCardData>).forEach(key => {
+        const value = rawDataFromAI[key];
+        if (key === 'statementDate' || key === 'contractDate') {
+          (processedFormData as any)[key] = parseDateSafe(value);
+        } else if (key === 'commissionPaymentSchedule' && Array.isArray(value)) {
+          (processedFormData as any)[key] = value.map(d => parseDateSafe(d)).filter(Boolean); // Filter out undefined/invalid dates
+        } else if (['contractAmount', 'commissionRate', 'notificationPeriodDays', 'penaltyRate', 'sublimitVolumeAndAvailability'].includes(key)) {
+            if (value === null || value === undefined || String(value).trim() === "") {
+              (processedFormData as any)[key] = undefined;
+            } else {
+              const num = parseFloat(String(value));
+              (processedFormData as any)[key] = isNaN(num) ? undefined : num;
+            }
+        }
+        else {
+          (processedFormData as any)[key] = value;
+        }
+      });
+
+      form.reset(processedFormData as FormValues);
+      setIsEditing(false);
     }
-  }, [extractedData, form]);
+  }, [extractedData, form, toast]);
+
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -183,11 +219,11 @@ export default function CreditDispositionGenerator() {
     if (!extractedData?.dispositionCard) return;
     const jsonString = JSON.stringify(extractedData.dispositionCard, (key, value) => {
       // Format dates to YYYY-MM-DD for JSON consistency
-      if (value && (key === "statementDate" || key === "contractDate") && value instanceof Date) {
+      if (value && (key === "statementDate" || key === "contractDate") && value instanceof Date && isValid(value)) {
         return format(value, "yyyy-MM-dd");
       }
       if (value && key === "commissionPaymentSchedule" && Array.isArray(value)) {
-        return value.map(d => d instanceof Date ? format(d, "yyyy-MM-dd") : d);
+        return value.map(d => d instanceof Date && isValid(d) ? format(d, "yyyy-MM-dd") : d);
       }
       return value;
     }, 2);
@@ -263,14 +299,17 @@ export default function CreditDispositionGenerator() {
                         disabled={readOnly}
                     >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {field.value ? format(field.value instanceof Date ? field.value : parseISO(field.value as string), "dd.MM.yyyy", { locale: ru }) : <span>Выберите дату</span>}
+                        {field.value instanceof Date && isValid(field.value)
+                            ? format(field.value, "dd.MM.yyyy", { locale: ru })
+                            : <span>Выберите дату</span>
+                        }
                     </Button>
                     </PopoverTrigger>
                     {!readOnly && (
                         <PopoverContent className="w-auto p-0">
                         <Calendar
                             mode="single"
-                            selected={field.value instanceof Date ? field.value : (field.value ? parseISO(field.value as string) : undefined)}
+                            selected={field.value instanceof Date && isValid(field.value) ? field.value : undefined}
                             onSelect={field.onChange}
                             initialFocus
                             locale={ru}
@@ -284,7 +323,7 @@ export default function CreditDispositionGenerator() {
                             <div key={index} className="flex items-center gap-2">
                                 <Input 
                                     type="text" 
-                                    value={dateItem instanceof Date ? format(dateItem, "dd.MM.yyyy") : (typeof dateItem === 'string' ? dateItem : '')} 
+                                    value={dateItem instanceof Date && isValid(dateItem) ? format(dateItem, "dd.MM.yyyy") : ''} 
                                     readOnly 
                                     className={cn("flex-grow", commonInputClass)}
                                 />
@@ -435,5 +474,3 @@ export default function CreditDispositionGenerator() {
     </div>
   );
 }
-
-    
