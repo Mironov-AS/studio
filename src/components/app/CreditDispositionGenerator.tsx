@@ -3,7 +3,7 @@
 
 import type { ChangeEvent } from 'react';
 import { useState, useEffect } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { generateCreditDisposition, type GenerateCreditDispositionInput, type GenerateCreditDispositionOutput, type CreditDispositionCardData, type SublimitDetail } from '@/ai/flows/generate-credit-disposition-flow';
-import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2, CalendarIcon, PackageOpen, CircleDollarSign, TrendingDown, ShieldAlert, Info, BookOpen, Users2 } from 'lucide-react';
+import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2, CalendarIcon, PackageOpen, CircleDollarSign, TrendingDown, ShieldAlert, Info, BookOpen, Users2, PlusCircle } from 'lucide-react';
 import { exportHtmlElementToPdf } from '@/lib/pdfUtils';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -98,8 +98,6 @@ const CreditDispositionCardZodSchema = z.object({
   finalCreditQualityCategory: z.enum(['Хорошее', 'Проблемное', 'Просроченное', 'Не определена', '']).optional(),
   dispositionExecutorName: z.string().optional(),
   authorizedSignatory: z.string().optional(),
-  // Temporary field for editing sublimitDetails as JSON
-  sublimitDetailsJson: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof CreditDispositionCardZodSchema>; 
@@ -262,11 +260,15 @@ export default function CreditDispositionGenerator() {
     defaultValues: {
         commissionPaymentSchedule: [],
         sublimitDetails: [],
-        sublimitDetailsJson: "[]",
         earlyRepaymentConditions: { mandatoryEarlyRepaymentAllowed: false, voluntaryEarlyRepaymentAllowed: false },
         penaltySanctions: { penaltyIndexation: false },
         financialIndicatorsAndCalculations: {},
     },
+  });
+
+  const { fields: sublimitFields, append: appendSublimit, remove: removeSublimit } = useFieldArray({
+    control: form.control,
+    name: "sublimitDetails"
   });
 
   const parseDateSafe = (dateInput: any): Date | undefined => {
@@ -301,7 +303,6 @@ export default function CreditDispositionGenerator() {
           penaltySanctions: {},
           financialIndicatorsAndCalculations: {},
           sublimitDetails: [],
-          sublimitDetailsJson: "[]",
       };
 
       (Object.keys(rawDataFromAI) as Array<keyof CreditDispositionCardData>).forEach(key => {
@@ -317,13 +318,6 @@ export default function CreditDispositionGenerator() {
                 sublimitExpiryDate: parseDateSafe(sl.sublimitExpiryDate)
             }));
             (processedFormData as any)[key] = parsedSublimits;
-            try {
-              (processedFormData as any).sublimitDetailsJson = JSON.stringify(parsedSublimits.map(s => ({...s, sublimitExpiryDate: s.sublimitExpiryDate instanceof Date && isValid(s.sublimitExpiryDate) ? format(s.sublimitExpiryDate, 'yyyy-MM-dd') : s.sublimitExpiryDate})), null, 2);
-            } catch (e) {
-              console.error("Error stringifying sublimits for JSON field:", e);
-              (processedFormData as any).sublimitDetailsJson = "[]";
-               toast({ title: 'Ошибка', description: 'Не удалось сериализовать сублимиты для редактирования.', variant: 'destructive' });
-            }
         } else if (key === 'contractAmount') {
              processedFormData.contractAmount = value === null || value === undefined || String(value).trim() === "" ? null : (isNaN(parseFloat(String(value))) ? null : parseFloat(String(value)));
         } else if (key === 'earlyRepaymentConditions' && value && typeof value === 'object') {
@@ -368,7 +362,6 @@ export default function CreditDispositionGenerator() {
       form.reset({
         commissionPaymentSchedule: [], 
         sublimitDetails: [], 
-        sublimitDetailsJson: "[]",
         earlyRepaymentConditions: { mandatoryEarlyRepaymentAllowed: false, voluntaryEarlyRepaymentAllowed: false },
         penaltySanctions: { penaltyIndexation: false },
         financialIndicatorsAndCalculations: {},
@@ -397,7 +390,6 @@ export default function CreditDispositionGenerator() {
     form.reset({
         commissionPaymentSchedule: [], 
         sublimitDetails: [], 
-        sublimitDetailsJson: "[]",
         earlyRepaymentConditions: { mandatoryEarlyRepaymentAllowed: false, voluntaryEarlyRepaymentAllowed: false },
         penaltySanctions: { penaltyIndexation: false },
         financialIndicatorsAndCalculations: {},
@@ -415,36 +407,9 @@ export default function CreditDispositionGenerator() {
   };
 
  const handleSaveEdits = (values: FormValues) => {
-    let parsedSublimitDetails: SublimitDetail[] = values.sublimitDetails || []; 
-    if (values.sublimitDetailsJson && values.sublimitDetailsJson.trim() !== "") {
-      try {
-        const parsedFromJson = JSON.parse(values.sublimitDetailsJson);
-        if (!Array.isArray(parsedFromJson)) throw new Error("JSON не является массивом");
-        
-        parsedSublimitDetails = parsedFromJson.map((sl:any) => ({
-            ...sl,
-            sublimitAmount: sl.sublimitAmount === null || sl.sublimitAmount === undefined || String(sl.sublimitAmount).trim() === "" ? null : (isNaN(parseFloat(String(sl.sublimitAmount))) ? null : parseFloat(String(sl.sublimitAmount))),
-            sublimitExpiryDate: parseDateSafe(sl.sublimitExpiryDate) 
-        }));
-
-      } catch (e) {
-        form.setError("sublimitDetailsJson", { type: "manual", message: `Некорректный формат JSON: ${(e as Error).message}` });
-        toast({ title: 'Ошибка JSON в сублимитах', description: `Некорректный формат JSON: ${(e as Error).message}. Изменения для сублимитов не сохранены.`, variant: 'destructive' });
-        return; 
-      }
-    }
-
-
     setExtractedData(prev => {
         if (!prev) return null;
-        const updatedValues = JSON.parse(JSON.stringify(values));
-        
-        const updatedCardData = {
-            ...updatedValues,
-            sublimitDetails: parsedSublimitDetails, 
-        } as CreditDispositionCardData;
-        delete (updatedCardData as any).sublimitDetailsJson;
-
+        const updatedCardData = { ...values } as CreditDispositionCardData;
         return { ...prev, dispositionCard: updatedCardData };
     });
 
@@ -461,27 +426,7 @@ export default function CreditDispositionGenerator() {
     setIsLoading(true);
     
     const currentFormData = form.getValues(); 
-    let finalSublimitDetails = currentFormData.sublimitDetails || [];
-
-    if (isEditing && currentFormData.sublimitDetailsJson && currentFormData.sublimitDetailsJson.trim() !== "" && currentFormData.sublimitDetailsJson.trim() !== "[]") {
-        try {
-            const parsedJsonSublimits = JSON.parse(currentFormData.sublimitDetailsJson);
-            if (Array.isArray(parsedJsonSublimits)) {
-                 finalSublimitDetails = parsedJsonSublimits.map((sl: any) => ({
-                    ...sl,
-                    sublimitAmount: sl.sublimitAmount === null || sl.sublimitAmount === undefined || String(sl.sublimitAmount).trim() === "" ? null : (isNaN(parseFloat(String(sl.sublimitAmount))) ? null : parseFloat(String(sl.sublimitAmount))),
-                    sublimitExpiryDate: parseDateSafe(sl.sublimitExpiryDate)
-                }));
-            }
-        } catch (e) {
-            console.warn("JSON для сублимитов невалиден при экспорте, используются данные из sublimitDetails.");
-        }
-    }
-    
-    const dataForPdf = {
-        ...currentFormData,
-        sublimitDetails: finalSublimitDetails,
-    };
+    const dataForPdf = { ...currentFormData };
 
 
     const htmlString = renderPdfHtml(dataForPdf);
@@ -516,29 +461,12 @@ export default function CreditDispositionGenerator() {
     
     let dataToExport = { ...form.getValues() } as Partial<FormValues>;
 
-    if (dataToExport.sublimitDetailsJson && dataToExport.sublimitDetailsJson.trim() !== "") {
-        try {
-            const parsedSublimits = JSON.parse(dataToExport.sublimitDetailsJson);
-            if (Array.isArray(parsedSublimits)) {
-                dataToExport.sublimitDetails = parsedSublimits.map((sl: any) => ({
-                    ...sl,
-                    sublimitAmount: sl.sublimitAmount === null || sl.sublimitAmount === undefined || String(sl.sublimitAmount).trim() === "" ? null : (isNaN(parseFloat(String(sl.sublimitAmount))) ? null : parseFloat(String(sl.sublimitAmount))),
-                    sublimitExpiryDate: sl.sublimitExpiryDate instanceof Date && isValid(sl.sublimitExpiryDate)
-                        ? format(sl.sublimitExpiryDate, "yyyy-MM-dd")
-                        : (typeof sl.sublimitExpiryDate === 'string' ? sl.sublimitExpiryDate : undefined) 
-                }));
-            }
-        } catch (e) {
-            console.warn("Invalid JSON in sublimitDetailsJson during JSON export, exporting current form value for sublimitDetails if available.");
-            dataToExport.sublimitDetails = (form.getValues('sublimitDetails') || []).map(sl => ({
-                 ...sl,
-                 sublimitExpiryDate: sl.sublimitExpiryDate instanceof Date && isValid(sl.sublimitExpiryDate)
-                        ? format(sl.sublimitExpiryDate, "yyyy-MM-dd")
-                        : (typeof sl.sublimitExpiryDate === 'string' ? sl.sublimitExpiryDate : undefined)
-            }));
-        }
-    }
-    delete dataToExport.sublimitDetailsJson;
+    dataToExport.sublimitDetails = (form.getValues('sublimitDetails') || []).map(sl => ({
+         ...sl,
+         sublimitExpiryDate: sl.sublimitExpiryDate instanceof Date && isValid(sl.sublimitExpiryDate)
+                ? format(sl.sublimitExpiryDate, "yyyy-MM-dd")
+                : (typeof sl.sublimitExpiryDate === 'string' ? sl.sublimitExpiryDate : undefined)
+    }));
 
 
     const jsonString = JSON.stringify(dataToExport, (key, value) => {
@@ -562,19 +490,21 @@ export default function CreditDispositionGenerator() {
   };
   
   const renderFormField = (
-    fieldName: keyof FormValues | `earlyRepaymentConditions.${string}` | `penaltySanctions.${string}` | `financialIndicatorsAndCalculations.${string}`, 
+    control: any, // Control object from useForm
+    name: string, // Field name, can be nested like "object.field"
     label: string, 
-    type: "text" | "number" | "textarea" | "select" | "checkbox" | "date" | "dateArray" | "objectArrayAsJsonString", 
+    type: "text" | "number" | "textarea" | "select" | "checkbox" | "date" | "dateArray", 
     options?: string[],
-    description?: string
+    description?: string,
+    isReadOnlyOverride?: boolean // To make specific sub-fields read-only
   ) => {
-    const readOnly = !isEditing;
+    const readOnly = isReadOnlyOverride !== undefined ? isReadOnlyOverride : !isEditing;
     const commonInputClass = "bg-card read-only:bg-muted/30 read-only:border-transparent read-only:focus-visible:ring-0 read-only:cursor-default";
 
     return (
       <FormField
-        control={form.control}
-        name={fieldName as keyof FormValues} 
+        control={control}
+        name={name} 
         render={({ field }) => {
             let fieldValue = field.value;
              if (type === "text" || type === "textarea") {
@@ -583,35 +513,25 @@ export default function CreditDispositionGenerator() {
                  fieldValue = field.value === undefined || field.value === null || field.value === "" ? "" : String(field.value);
             } else if (type === 'checkbox') {
                 fieldValue = field.value === undefined || field.value === null ? false : field.value;
-            } else if (type === 'objectArrayAsJsonString' && fieldName === 'sublimitDetailsJson') {
-                if (readOnly) {
-                    const actualArray = form.getValues('sublimitDetails');
-                    try {
-                        fieldValue = Array.isArray(actualArray) ? JSON.stringify(actualArray.map(s => ({...s, sublimitExpiryDate: s.sublimitExpiryDate instanceof Date && isValid(s.sublimitExpiryDate) ? format(s.sublimitExpiryDate, 'yyyy-MM-dd') : s.sublimitExpiryDate })), null, 2) : "[]";
-                    } catch (e) { fieldValue = "[]"; }
-                } else {
-                    fieldValue = field.value === undefined || field.value === null ? "[]" : field.value;
-                }
             }
-
 
             return (
             <FormItem className="mb-3 flex flex-col">
-                <FormLabel htmlFor={fieldName as string} className="text-sm font-medium mb-1">{label}</FormLabel>
-                {type === 'textarea' || type === 'objectArrayAsJsonString' ? (
+                <FormLabel htmlFor={name} className="text-sm font-medium mb-1">{label}</FormLabel>
+                {type === 'textarea' ? (
                 <Textarea 
-                    id={fieldName as string} 
-                    {...form.register(fieldName as keyof FormValues)} 
+                    id={name} 
+                    {...form.register(name as keyof FormValues)} 
                     defaultValue={fieldValue as string} 
                     readOnly={readOnly} 
-                    rows={type === 'objectArrayAsJsonString' ? 8 : 3} 
-                    className={cn("mt-0.5", commonInputClass, type === 'objectArrayAsJsonString' && 'font-mono text-xs')} 
-                    placeholder={type === 'objectArrayAsJsonString' && !readOnly ? 'Введите массив объектов в формате JSON...' : (readOnly && !fieldValue ? 'Нет данных' : undefined)}
+                    rows={3} 
+                    className={cn("mt-0.5", commonInputClass)} 
+                    placeholder={(readOnly && !fieldValue ? 'Нет данных' : undefined)}
                 />
                 ) : type === 'select' && options ? (
                 <Controller
-                    control={form.control}
-                    name={fieldName as keyof FormValues}
+                    control={control}
+                    name={name as keyof FormValues}
                     render={({ field: controllerField }) => (
                     <Select 
                         onValueChange={controllerField.onChange} 
@@ -631,7 +551,7 @@ export default function CreditDispositionGenerator() {
                 ) : type === 'checkbox' ? (
                  <div className="mt-0.5 flex items-center h-10">
                     <Checkbox 
-                        id={fieldName as string} 
+                        id={name} 
                         checked={fieldValue as boolean} 
                         onCheckedChange={field.onChange} 
                         disabled={readOnly}
@@ -709,10 +629,10 @@ export default function CreditDispositionGenerator() {
                      </div>
                 ) : ( 
                 <Input 
-                    id={fieldName as string} 
+                    id={name} 
                     type={type === 'number' ? 'number' : 'text'} 
                     step={type === 'number' ? 'any' : undefined}
-                    {...form.register(fieldName as keyof FormValues, { 
+                    {...form.register(name as keyof FormValues, { 
                         valueAsNumber: type === 'number',
                         setValueAs: type === 'number' ? (v: any) => (v === "" || v === null || v === undefined ? null : parseFloat(v)) : undefined 
                     })} 
@@ -798,93 +718,142 @@ export default function CreditDispositionGenerator() {
                   <AccordionItem value="general">
                     <AccordionTrigger className="text-lg hover:no-underline"><Info className="mr-2 h-5 w-5 text-primary" />Общие элементы</AccordionTrigger>
                     <AccordionContent className="pt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-0">
-                      {renderFormField('statementNumber', 'Номер заявления', 'text')}
-                      {renderFormField('statementDate', 'Дата заявления', 'date')}
-                      {renderFormField('borrowerName', 'Название заемщика', 'text')}
-                      {renderFormField('borrowerInn', 'ИНН заемщика', 'text')}
-                      {renderFormField('contractNumber', 'Номер договора', 'text')}
-                      {renderFormField('contractDate', 'Дата договора', 'date')}
-                      {renderFormField('creditType', 'Вид кредитования', 'select', ['Кредитная линия', 'Возобновляемая кредитная линия'])}
-                      {renderFormField('limitCurrency', 'Валюта лимита/договора', 'text')}
-                      {renderFormField('contractAmount', 'Сумма договора/лимита', 'number')}
-                      {renderFormField('bankUnitCode', 'Код подразделения банка', 'text')}
-                      {renderFormField('contractTerm', 'Срок действия договора', 'text')}
-                      {renderFormField('borrowerAccountNumber', 'Расчётный счёт заемщика', 'text')}
-                      {renderFormField('enterpriseCategory', 'Категория предприятия', 'select', ['Среднее', 'Малое', 'Микро', 'Не применимо'])}
-                      {renderFormField('creditCommitteeDecisionDetails', 'Решение кредитного комитета (детали)', 'text')}
-                      {renderFormField('subsidyAgent', 'Агент субсидии', 'text')}
-                      {renderFormField('generalNotesAndSpecialConditions', 'Общие примечания и особые условия', 'textarea')}
+                      {renderFormField(form.control, 'statementNumber', 'Номер заявления', 'text')}
+                      {renderFormField(form.control, 'statementDate', 'Дата заявления', 'date')}
+                      {renderFormField(form.control, 'borrowerName', 'Название заемщика', 'text')}
+                      {renderFormField(form.control, 'borrowerInn', 'ИНН заемщика', 'text')}
+                      {renderFormField(form.control, 'contractNumber', 'Номер договора', 'text')}
+                      {renderFormField(form.control, 'contractDate', 'Дата договора', 'date')}
+                      {renderFormField(form.control, 'creditType', 'Вид кредитования', 'select', ['Кредитная линия', 'Возобновляемая кредитная линия', ''])}
+                      {renderFormField(form.control, 'limitCurrency', 'Валюта лимита/договора', 'text')}
+                      {renderFormField(form.control, 'contractAmount', 'Сумма договора/лимита', 'number')}
+                      {renderFormField(form.control, 'bankUnitCode', 'Код подразделения банка', 'text')}
+                      {renderFormField(form.control, 'contractTerm', 'Срок действия договора', 'text')}
+                      {renderFormField(form.control, 'borrowerAccountNumber', 'Расчётный счёт заемщика', 'text')}
+                      {renderFormField(form.control, 'enterpriseCategory', 'Категория предприятия', 'select', ['Среднее', 'Малое', 'Микро', 'Не применимо', ''])}
+                      {renderFormField(form.control, 'creditCommitteeDecisionDetails', 'Решение кредитного комитета (детали)', 'text')}
+                      {renderFormField(form.control, 'subsidyAgent', 'Агент субсидии', 'text')}
+                      {renderFormField(form.control, 'generalNotesAndSpecialConditions', 'Общие примечания и особые условия', 'textarea')}
                     </AccordionContent>
                   </AccordionItem>
                   <AccordionItem value="msfo">
                     <AccordionTrigger className="text-lg hover:no-underline"><BookOpen className="mr-2 h-5 w-5 text-primary" />МСФО</AccordionTrigger>
                     <AccordionContent className="pt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-0">
-                      {renderFormField('sppiTestResult', 'Результат SPPI-теста', 'text')}
-                      {renderFormField('assetOwnershipBusinessModel', 'Бизнес-модель владения активом', 'select', ['Удерживать для продажи', 'Удерживать для получения денежных потоков', 'Иное'])}
-                      {renderFormField('marketTransactionAssessment', 'Оценка рыночности сделки', 'select', ['Рыночная', 'Нерыночная', 'Не удалось определить'])}
+                      {renderFormField(form.control, 'sppiTestResult', 'Результат SPPI-теста', 'text')}
+                      {renderFormField(form.control, 'assetOwnershipBusinessModel', 'Бизнес-модель владения активом', 'select', ['Удерживать для продажи', 'Удерживать для получения денежных потоков', 'Иное', ''])}
+                      {renderFormField(form.control, 'marketTransactionAssessment', 'Оценка рыночности сделки', 'select', ['Рыночная', 'Нерыночная', 'Не удалось определить', ''])}
                     </AccordionContent>
                   </AccordionItem>
                   <AccordionItem value="commission">
                     <AccordionTrigger className="text-lg hover:no-underline"><CircleDollarSign className="mr-2 h-5 w-5 text-primary" />Комиссионные сборы</AccordionTrigger>
                     <AccordionContent className="pt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-0">
-                      {renderFormField('commissionType', 'Вид комиссии', 'select', ["Фиксированная", "Переменная", "Отсутствует", "Комбинированная"])}
-                      {renderFormField('commissionCalculationMethod', 'Порядок расчета комиссий', 'textarea')}
-                      {renderFormField('commissionPaymentSchedule', 'График оплат комиссий', 'dateArray')}
+                      {renderFormField(form.control, 'commissionType', 'Вид комиссии', 'select', ["Фиксированная", "Переменная", "Отсутствует", "Комбинированная", ""])}
+                      {renderFormField(form.control, 'commissionCalculationMethod', 'Порядок расчета комиссий', 'textarea')}
+                      {renderFormField(form.control, 'commissionPaymentSchedule', 'График оплат комиссий', 'dateArray')}
                     </AccordionContent>
                   </AccordionItem>
                   <AccordionItem value="repayment">
                     <AccordionTrigger className="text-lg hover:no-underline"><TrendingDown className="mr-2 h-5 w-5 text-primary" />Условия досрочного погашения</AccordionTrigger>
                     <AccordionContent className="pt-2 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0">
-                        {renderFormField('earlyRepaymentConditions.mandatoryEarlyRepaymentAllowed', 'Обязательное досрочное погашение разрешено', 'checkbox')}
-                        {renderFormField('earlyRepaymentConditions.voluntaryEarlyRepaymentAllowed', 'Добровольное досрочное погашение разрешено', 'checkbox')}
-                        {renderFormField('earlyRepaymentConditions.earlyRepaymentFundingSources', 'Источники финансирования досрочных выплат', 'textarea')}
-                        {renderFormField('earlyRepaymentConditions.earlyRepaymentCommissionRate', 'Комиссия за досрочные выплаты (%)', 'number')}
-                        {renderFormField('earlyRepaymentConditions.principalAndInterestRepaymentOrder', 'Очередность погашения ОД и процентов', 'textarea')}
-                        {renderFormField('earlyRepaymentConditions.earlyRepaymentMoratoriumDetails', 'Мораторий на досрочное погашение (детали)', 'textarea')}
+                        {renderFormField(form.control, 'earlyRepaymentConditions.mandatoryEarlyRepaymentAllowed', 'Обязательное досрочное погашение разрешено', 'checkbox')}
+                        {renderFormField(form.control, 'earlyRepaymentConditions.voluntaryEarlyRepaymentAllowed', 'Добровольное досрочное погашение разрешено', 'checkbox')}
+                        {renderFormField(form.control, 'earlyRepaymentConditions.earlyRepaymentFundingSources', 'Источники финансирования досрочных выплат', 'textarea')}
+                        {renderFormField(form.control, 'earlyRepaymentConditions.earlyRepaymentCommissionRate', 'Комиссия за досрочные выплаты (%)', 'number')}
+                        {renderFormField(form.control, 'earlyRepaymentConditions.principalAndInterestRepaymentOrder', 'Очередность погашения ОД и процентов', 'textarea')}
+                        {renderFormField(form.control, 'earlyRepaymentConditions.earlyRepaymentMoratoriumDetails', 'Мораторий на досрочное погашение (детали)', 'textarea')}
                     </AccordionContent>
                   </AccordionItem>
                   <AccordionItem value="penalties">
                     <AccordionTrigger className="text-lg hover:no-underline"><ShieldAlert className="mr-2 h-5 w-5 text-primary" />Штрафные санкции</AccordionTrigger>
                     <AccordionContent className="pt-2 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0">
-                        {renderFormField('penaltySanctions.latePrincipalPaymentPenalty', 'Штраф за просрочку ОД', 'text')}
-                        {renderFormField('penaltySanctions.lateInterestPaymentPenalty', 'Штраф за просрочку процентов', 'text')}
-                        {renderFormField('penaltySanctions.lateCommissionPaymentPenalty', 'Штраф за неоплату комиссий', 'text')}
-                        {renderFormField('penaltySanctions.penaltyIndexation', 'Индексация неустойки', 'checkbox')}
+                        {renderFormField(form.control, 'penaltySanctions.latePrincipalPaymentPenalty', 'Штраф за просрочку ОД', 'text')}
+                        {renderFormField(form.control, 'penaltySanctions.lateInterestPaymentPenalty', 'Штраф за просрочку процентов', 'text')}
+                        {renderFormField(form.control, 'penaltySanctions.lateCommissionPaymentPenalty', 'Штраф за неоплату комиссий', 'text')}
+                        {renderFormField(form.control, 'penaltySanctions.penaltyIndexation', 'Индексация неустойки', 'checkbox')}
                     </AccordionContent>
                   </AccordionItem>
+                  
                   <AccordionItem value="sublimits">
                     <AccordionTrigger className="text-lg hover:no-underline"><PackageOpen className="mr-2 h-5 w-5 text-primary" />Информация по сублимитам</AccordionTrigger>
-                    <AccordionContent className="pt-2">
-                      {renderFormField('sublimitDetailsJson', 'Сублимиты (массив объектов JSON)', 'objectArrayAsJsonString', [], "Отредактируйте как массив JSON. Поля: sublimitAmount(number), sublimitCurrency(string), sublimitAvailabilityPeriod(string), sublimitExpiryDate(string 'yyyy-MM-dd'), sublimitPurpose(string), sublimitInvestmentPhase(string), sublimitRepaymentOrder(string).")}
+                    <AccordionContent className="pt-2 space-y-4">
+                      {sublimitFields.map((item, index) => (
+                        <Card key={item.id} className="p-4 bg-secondary/30 shadow-sm">
+                          <div className="flex justify-between items-center mb-2">
+                            <h4 className="font-semibold text-md">Сублимит {index + 1}</h4>
+                            {!isEditing && (
+                                <Button type="button" variant="ghost" size="icon" onClick={() => {if(isEditing) removeSublimit(index)}} disabled={!isEditing}>
+                                  <Trash2 className="h-4 w-4 text-destructive"/>
+                                </Button>
+                            )}
+                            {isEditing && (
+                                <Button type="button" variant="ghost" size="icon" onClick={() => removeSublimit(index)}>
+                                  <Trash2 className="h-4 w-4 text-destructive"/>
+                                </Button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-0">
+                            {renderFormField(form.control, `sublimitDetails.${index}.sublimitAmount`, 'Сумма сублимита', 'number')}
+                            {renderFormField(form.control, `sublimitDetails.${index}.sublimitCurrency`, 'Валюта', 'text')}
+                            {renderFormField(form.control, `sublimitDetails.${index}.sublimitAvailabilityPeriod`, 'Период доступности', 'text')}
+                            {renderFormField(form.control, `sublimitDetails.${index}.sublimitExpiryDate`, 'Дата завершения', 'date')}
+                            {renderFormField(form.control, `sublimitDetails.${index}.sublimitPurpose`, 'Цель', 'textarea')}
+                            {renderFormField(form.control, `sublimitDetails.${index}.sublimitInvestmentPhase`, 'Инвестиционная фаза', 'text')}
+                            {renderFormField(form.control, `sublimitDetails.${index}.sublimitRepaymentOrder`, 'Порядок погашения', 'textarea')}
+                          </div>
+                        </Card>
+                      ))}
+                      {isEditing && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => appendSublimit({ 
+                                sublimitAmount: null, 
+                                sublimitCurrency: '', 
+                                sublimitAvailabilityPeriod: '', 
+                                sublimitExpiryDate: undefined, 
+                                sublimitPurpose: '', 
+                                sublimitInvestmentPhase: '', 
+                                sublimitRepaymentOrder: '' 
+                            })}
+                        >
+                            <PlusCircle className="mr-2 h-4 w-4" /> Добавить сублимит
+                        </Button>
+                      )}
+                       {(!sublimitFields || sublimitFields.length === 0) && !isEditing && (
+                            <p className="text-sm text-muted-foreground py-2">Сублимиты не указаны.</p>
+                        )}
                     </AccordionContent>
                   </AccordionItem>
+
                    <AccordionItem value="financial">
                     <AccordionTrigger className="text-lg hover:no-underline"><CircleDollarSign className="mr-2 h-5 w-5 text-primary" />Финансовые показатели и расчеты</AccordionTrigger>
                     <AccordionContent className="pt-2 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0">
-                        {renderFormField('financialIndicatorsAndCalculations.accruedInterestRate', 'Ставка начисленных процентов (%)', 'number')}
-                        {renderFormField('financialIndicatorsAndCalculations.capitalizedInterestRate', 'Ставка капитализированных процентов (%)', 'number')}
-                        {renderFormField('financialIndicatorsAndCalculations.accruedInterestCalculationRules', 'Правила расчета начисленных процентов', 'textarea')}
-                        {renderFormField('financialIndicatorsAndCalculations.interestPaymentRegulations', 'Регламент уплаты процентов', 'textarea')}
-                        {renderFormField('financialIndicatorsAndCalculations.debtAndCommissionReservingParams', 'Параметры резервирования', 'textarea')}
-                        {renderFormField('financialIndicatorsAndCalculations.insuranceProductCodes', 'Коды страховых продуктов', 'text')}
-                        {renderFormField('financialIndicatorsAndCalculations.specialContractConditions', 'Особые фин. условия договора', 'textarea')}
+                        {renderFormField(form.control, 'financialIndicatorsAndCalculations.accruedInterestRate', 'Ставка начисленных процентов (%)', 'number')}
+                        {renderFormField(form.control, 'financialIndicatorsAndCalculations.capitalizedInterestRate', 'Ставка капитализированных процентов (%)', 'number')}
+                        {renderFormField(form.control, 'financialIndicatorsAndCalculations.accruedInterestCalculationRules', 'Правила расчета начисленных процентов', 'textarea')}
+                        {renderFormField(form.control, 'financialIndicatorsAndCalculations.interestPaymentRegulations', 'Регламент уплаты процентов', 'textarea')}
+                        {renderFormField(form.control, 'financialIndicatorsAndCalculations.debtAndCommissionReservingParams', 'Параметры резервирования', 'textarea')}
+                        {renderFormField(form.control, 'financialIndicatorsAndCalculations.insuranceProductCodes', 'Коды страховых продуктов', 'text')}
+                        {renderFormField(form.control, 'financialIndicatorsAndCalculations.specialContractConditions', 'Особые фин. условия договора', 'textarea')}
                     </AccordionContent>
                   </AccordionItem>
                   <AccordionItem value="admin">
                     <AccordionTrigger className="text-lg hover:no-underline"><Users2 className="mr-2 h-5 w-5 text-primary" />Административные блоки</AccordionTrigger>
                     <AccordionContent className="pt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-0">
-                      {renderFormField('finalCreditQualityCategory', 'Итоговая категория качества кредита', 'select', ['Хорошее', 'Проблемное', 'Просроченное', 'Не определена'])}
-                      {renderFormField('dispositionExecutorName', 'Исполнитель распоряжения (ФИО)', 'text')}
-                      {renderFormField('authorizedSignatory', 'Авторизованное лицо (ФИО)', 'text')}
+                      {renderFormField(form.control, 'finalCreditQualityCategory', 'Итоговая категория качества кредита', 'select', ['Хорошее', 'Проблемное', 'Просроченное', 'Не определена', ''])}
+                      {renderFormField(form.control, 'dispositionExecutorName', 'Исполнитель распоряжения (ФИО)', 'text')}
+                      {renderFormField(form.control, 'authorizedSignatory', 'Авторизованное лицо (ФИО)', 'text')}
                     </AccordionContent>
                   </AccordionItem>
                 </Accordion>
               </CardContent>
               <CardFooter className="mt-4 pt-4 border-t flex flex-col sm:flex-row justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={handleExportJson} disabled={isLoading}>
+                  <Button type="button" variant="outline" onClick={handleExportJson} disabled={isLoading || isEditing}>
                       <Download className="mr-2 h-4 w-4" /> Экспорт в JSON
                   </Button>
-                  <Button type="button" variant="outline" onClick={handleExportPdf} disabled={isLoading}>
+                  <Button type="button" variant="outline" onClick={handleExportPdf} disabled={isLoading || isEditing}>
                       {isLoading && !fileDataUri && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
                       <Download className="mr-2 h-4 w-4" /> Экспорт в PDF
                   </Button>
