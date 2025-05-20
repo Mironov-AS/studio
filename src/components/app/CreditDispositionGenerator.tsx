@@ -29,6 +29,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription, // Added FormDescription here
 } from "@/components/ui/form";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
@@ -624,7 +625,7 @@ export default function CreditDispositionGenerator() {
                         <SelectValue placeholder={`Выберите ${label.toLowerCase()}`} />
                         </SelectTrigger>
                         <SelectContent>
-                        {/* <SelectItem value="">Не выбрано</SelectItem> */} {/* Removed problematic item */}
+                        
                         {options.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                         </SelectContent>
                     </Select>
