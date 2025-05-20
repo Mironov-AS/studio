@@ -22,7 +22,7 @@ const GenerateCreditDispositionInputSchema = z.object({
 });
 export type GenerateCreditDispositionInput = z.infer<typeof GenerateCreditDispositionInputSchema>;
 
-// Made local: Zod schema for the disposition card. Not exported as an object.
+// Local schema for the disposition card. Not exported as an object.
 const CreditDispositionCardSchema = z.object({
   statementNumber: z.string().optional().describe('Уникальный идентификатор заявки.'),
   statementDate: z.union([z.date(), z.string()]).optional().describe('Дата заявления (ГГГГ-ММ-ДД).'),
@@ -47,7 +47,7 @@ const CreditDispositionCardSchema = z.object({
   earlyRepaymentMoratorium: z.boolean().optional().describe('Запрет на досрочное погашение (true/false).'),
   penaltyRate: z.number().optional().describe('Величина штрафа за просрочку платежа (в процентах, число).'),
   penaltyIndexation: z.boolean().optional().describe('Применяется ли увеличение размера неустойки (true/false).'),
-  sublimitVolumeAndAvailability: z.number().optional().describe('Отдельные лимиты внутри общего объема кредита (число).'),
+  sublimits: z.array(z.number()).optional().describe('Массив сумм отдельных сублимитов.'),
   finalCreditQualityCategory: z.enum(['Хорошее', 'Проблемное', 'Просроченное']).optional().describe('Соответствие нормам Центрального банка.'),
   dispositionExecutorName: z.string().optional().describe('ФИО сотрудника, подготовившего распоряжение.'),
   authorizedSignatory: z.string().optional().describe('Лицо, имеющее полномочия подписи (ФИО).'),
@@ -78,7 +78,7 @@ const prompt = ai.definePrompt({
 Имя файла (для контекста): {{{fileName}}}
 {{/if}}
 
-Проанализируйте документ и извлеките следующие атрибуты. Если какой-то атрибут отсутствует в договоре или не может быть однозначно определен, оставьте соответствующее поле пустым или со значением по умолчанию (например, false для boolean, пустой массив для dateArray). Даты должны быть в формате ГГГГ-ММ-ДД.
+Проанализируйте документ и извлеките следующие атрибуты. Если какой-то атрибут отсутствует в договоре или не может быть однозначно определен, оставьте соответствующее поле пустым или со значением по умолчанию (например, false для boolean, пустой массив для dateArray/numberArray). Даты должны быть в формате ГГГГ-ММ-ДД.
 
 Извлеките следующие данные для dispositionCard:
 - statementNumber: Уникальный идентификатор заявки (если есть).
@@ -104,7 +104,7 @@ const prompt = ai.definePrompt({
 - earlyRepaymentMoratorium: Запрет на досрочное погашение (true или false).
 - penaltyRate: Величина штрафа за просрочку платежа (в процентах, число, например, 0.1 для 0.1%).
 - penaltyIndexation: Применяется ли увеличение размера неустойки (true или false).
-- sublimitVolumeAndAvailability: Отдельные лимиты внутри общего объема кредита (число, если есть).
+- sublimits: Массив чисел, представляющих суммы каждого отдельного сублимита, найденного в договоре. Если сублимиты не указаны, это поле можно опустить или оставить пустым массивом.
 - finalCreditQualityCategory: Итоговая категория качества кредита (одно из: "Хорошее", "Проблемное", "Просроченное").
 - dispositionExecutorName: ФИО сотрудника, подготовившего распоряжение (если указано в контексте документа).
 - authorizedSignatory: Лицо, имеющее полномочия подписи от банка (если указано в контексте документа, ФИО).
@@ -127,18 +127,15 @@ const generateCreditDispositionFlow = ai.defineFlow(
     }
 
     const MAX_RETRIES = 3;
-    const INITIAL_DELAY_MS = 1500; // Slightly increased delay for potentially complex PDF parsing
+    const INITIAL_DELAY_MS = 1500; 
     let attempt = 0;
 
     while (attempt < MAX_RETRIES) {
       try {
-        const result = await prompt(input); // Pass the original input with documentDataUri
+        const result = await prompt(input); 
         const output = result.output;
 
         if (output && output.dispositionCard) {
-          // Basic validation or transformation can happen here if needed
-          // For example, ensuring dates are in a consistent string format if not already Date objects
-          // For now, we rely on the schema and prompt for correct formatting.
           return output;
         }
         
@@ -149,7 +146,7 @@ const generateCreditDispositionFlow = ai.defineFlow(
       } catch (e: any) {
         const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : JSON.stringify(e);
         const isRetryableError = 
-          errorMessage.includes('503') || // Service Unavailable
+          errorMessage.includes('503') || 
           errorMessage.includes('overloaded') || 
           errorMessage.includes('service unavailable') ||
           errorMessage.includes('rate limit') || 
@@ -166,7 +163,7 @@ const generateCreditDispositionFlow = ai.defineFlow(
           const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          throw e; // Non-retryable error
+          throw e; 
         }
       }
       attempt++;
@@ -174,4 +171,3 @@ const generateCreditDispositionFlow = ai.defineFlow(
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
-
