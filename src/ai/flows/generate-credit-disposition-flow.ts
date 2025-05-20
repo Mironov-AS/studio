@@ -1,12 +1,13 @@
 
 'use server';
 /**
- * @fileOverview Generates a credit agreement disposition card.
+ * @fileOverview Generates a credit agreement disposition card with detailed financial and legal attributes.
  *
  * - generateCreditDisposition - Function to handle credit disposition generation.
  * - GenerateCreditDispositionInput - Input type for the function.
  * - GenerateCreditDispositionOutput - Output type for the function.
  * - CreditDispositionCardData - The type for the disposition card data.
+ * - SublimitDetail - Type for individual sublimit details.
  */
 
 import {ai} from '@/ai/genkit';
@@ -22,40 +23,90 @@ const GenerateCreditDispositionInputSchema = z.object({
 });
 export type GenerateCreditDispositionInput = z.infer<typeof GenerateCreditDispositionInputSchema>;
 
+// Schema for individual sublimit details
+const SublimitDetailSchema = z.object({
+  sublimitAmount: z.number().optional().describe("Сумма сублимита."),
+  sublimitCurrency: z.string().optional().describe("Валюта сублимита."),
+  sublimitAvailabilityPeriod: z.string().optional().describe("Период доступности сублимита."),
+  sublimitExpiryDate: z.union([z.date(), z.string()]).optional().describe("Дата завершения действия сублимита (ГГГГ-ММ-ДД)."),
+  sublimitPurpose: z.string().optional().describe("Цели, на которые выделялся сублимит."),
+  sublimitInvestmentPhase: z.string().optional().describe("Инвестиционная фаза сублимита."),
+  sublimitRepaymentOrder: z.string().optional().describe("Особенности порядка погашения задолженности по сублимиту."),
+});
+export type SublimitDetail = z.infer<typeof SublimitDetailSchema>;
+
 // Local schema for the disposition card. Not exported as an object.
-const CreditDispositionCardSchema = z.object({
-  statementNumber: z.string().optional().describe('Уникальный идентификатор заявки.'),
+const CreditDispositionCardZodSchema = z.object({
+  // Общие элементы
+  statementNumber: z.string().optional().describe('Уникальный идентификатор заявки (Номер заявления в кредитной дороге).'),
   statementDate: z.union([z.date(), z.string()]).optional().describe('Дата заявления (ГГГГ-ММ-ДД).'),
   borrowerName: z.string().optional().describe('Полное юридическое название заемщика.'),
   borrowerInn: z.string().optional().describe('ИНН заемщика.'),
   contractNumber: z.string().optional().describe('Номер подписанного кредитного договора.'),
   contractDate: z.union([z.date(), z.string()]).optional().describe('Дата подписания договора (ГГГГ-ММ-ДД).'),
   creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия']).optional().describe('Тип кредита.'),
-  limitCurrency: z.string().optional().describe('Валюта кредитного лимита (например, RUB, USD).'),
-  contractAmount: z.number().optional().describe('Общая сумма кредита.'),
+  limitCurrency: z.string().optional().describe('Валюта кредитного лимита/общей суммы договора (например, RUB, USD).'),
+  contractAmount: z.number().optional().describe('Общая сумма кредита/договора.'),
+  bankUnitCode: z.string().optional().describe('Код подразделения банка, в котором обслуживается заемщик.'),
+  contractTerm: z.string().optional().describe('Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").'),
   borrowerAccountNumber: z.string().optional().describe('Банковский расчётный счёт заемщика.'),
-  enterpriseCategory: z.enum(['Среднее', 'Малое', 'Микро']).optional().describe('Признак субъекта МСП.'),
-  creditCommitteeDecision: z.boolean().optional().describe('Есть решение кредитного комитета (true/false).'),
+  enterpriseCategory: z.enum(['Среднее', 'Малое', 'Микро', 'Не применимо']).optional().describe('Признак субъекта МСП или "Не применимо".'),
+  creditCommitteeDecisionDetails: z.string().optional().describe('Детали решения кредитного комитета (например, номер протокола, дата). Если просто "да/нет", указать "Решение принято" или "Решение отсутствует".'),
   subsidyAgent: z.string().optional().describe('Организация, предоставляющая субсидии.'),
-  notesAndSpecialConditions: z.string().optional().describe('Любые дополнительные замечания и особые условия.'),
-  assetBusinessModel: z.enum(['Удерживать для продажи', 'Иное']).optional().describe('Оценка модели управления активом.'),
-  marketTransaction: z.enum(['Да', 'Нет', 'Не применимо']).optional().describe('Определение рыночного характера операции.'),
-  commissionRate: z.number().optional().describe('Размер комиссионных сборов (число).'),
-  commissionPaymentSchedule: z.array(z.union([z.date(), z.string()])).optional().describe("Список дат оплаты комиссий (массив дат в формате ГГГГ-ММ-ДД)."),
-  earlyRepaymentAllowed: z.boolean().optional().describe('Разрешено ли частичное/досрочное погашение (true/false).'),
-  notificationPeriodDays: z.number().int().optional().describe('Количество дней для уведомления кредитора.'),
-  earlyRepaymentMoratorium: z.boolean().optional().describe('Запрет на досрочное погашение (true/false).'),
-  penaltyRate: z.number().optional().describe('Величина штрафа за просрочку платежа (в процентах, число).'),
-  penaltyIndexation: z.boolean().optional().describe('Применяется ли увеличение размера неустойки (true/false).'),
-  sublimits: z.array(z.number()).optional().describe('Массив сумм отдельных сублимитов.'),
-  finalCreditQualityCategory: z.enum(['Хорошее', 'Проблемное', 'Просроченное']).optional().describe('Соответствие нормам Центрального банка.'),
+  generalNotesAndSpecialConditions: z.string().optional().describe('Общие дополнительные примечания и особые условия (например, наличие субсидий, льготных ставок).'),
+
+  // Элементы, специфичные для бухгалтерского учета по стандартам МСФО
+  sppiTestResult: z.string().optional().describe('Результат SPPI-теста (например, "Пройден успешно", "Не пройден", "Соответствует критериям SPPI").'),
+  assetOwnershipBusinessModel: z.enum(['Удерживать для продажи', 'Удерживать для получения денежных потоков', 'Иное']).optional().describe('Бизнес-модель владения активом.'),
+  marketTransactionAssessment: z.enum(['Рыночная', 'Нерыночная', 'Не удалось определить']).optional().describe('Оценка рыночности сделки (рыночной стоимости договора).'),
+
+  // Комиссионные сборы по договору
+  commissionType: z.enum(["Фиксированная", "Переменная", "Отсутствует", "Комбинированная"]).optional().describe("Вид комиссии."),
+  commissionCalculationMethod: z.string().optional().describe("Порядок расчета сумм комиссий (алгоритм вычисления или конкретные цифры)."),
+  commissionPaymentSchedule: z.array(z.union([z.date(), z.string()])).optional().describe("Графики платежей комиссий (массив дат в формате ГГГГ-ММ-ДД)."),
+  
+  // Условия досрочного погашения
+  earlyRepaymentConditions: z.object({
+    mandatoryEarlyRepaymentAllowed: z.boolean().optional().describe("Возможность обязательного досрочного погашения (true/false)."),
+    voluntaryEarlyRepaymentAllowed: z.boolean().optional().describe("Возможность добровольного досрочного погашения (true/false)."),
+    earlyRepaymentFundingSources: z.string().optional().describe("Источники финансирования досрочных выплат."),
+    earlyRepaymentCommissionRate: z.number().optional().describe("Размер комиссий за досрочные выплаты (в процентах)."),
+    principalAndInterestRepaymentOrder: z.string().optional().describe("Очередность погашения основного долга и процентов при досрочном погашении."),
+    earlyRepaymentMoratoriumDetails: z.string().optional().describe("Ограничительные моратории на возможность досрочно погасить долг (описание условий или \"Отсутствует\")."),
+  }).optional().describe("Детали условий досрочного погашения."),
+
+  // Штрафные санкции за просрочку платежа
+  penaltySanctions: z.object({
+    latePrincipalPaymentPenalty: z.string().optional().describe("Размеры штрафов за несвоевременную оплату основной части займа (например, \"0.1% в день от суммы просрочки\")."),
+    lateInterestPaymentPenalty: z.string().optional().describe("Размеры санкций за задержку оплаты начисленных процентов."),
+    lateCommissionPaymentPenalty: z.string().optional().describe("Штрафы за неоплату комиссий."),
+    penaltyIndexation: z.boolean().optional().describe('Применяется ли увеличение размера неустойки (true/false).'),
+  }).optional().describe("Детали штрафных санкций."),
+
+  // Информация по сублимитам
+  sublimitDetails: z.array(SublimitDetailSchema).optional().describe("Массив объектов с детальной информацией по каждому сублимиту."),
+
+  // Дополнительные финансовые показатели и регламенты расчетов
+  financialIndicatorsAndCalculations: z.object({
+    accruedInterestRate: z.number().optional().describe("Процентные ставки для начисленных процентов (число, например, 12.5 для 12.5%)."),
+    capitalizedInterestRate: z.number().optional().describe("Процентные ставки для капитализированных процентов (число)."),
+    accruedInterestCalculationRules: z.string().optional().describe("Правила и алгоритмы расчета начисленных процентов."),
+    interestPaymentRegulations: z.string().optional().describe("Регламент уплат процентов."),
+    debtAndCommissionReservingParams: z.string().optional().describe("Параметры резервирования по долгу и комиссиям."),
+    insuranceProductCodes: z.string().optional().describe("Специфические коды страховых продуктов."),
+    specialContractConditions: z.string().optional().describe("Особые условия договора, относящиеся к финансовым расчетам."),
+  }).optional().describe("Финансовые показатели и регламенты."),
+
+  // Административные блоки
+  finalCreditQualityCategory: z.enum(['Хорошее', 'Проблемное', 'Просроченное', 'Не определена']).optional().describe('Итоговая категория качества кредита (соответствие нормам ЦБ) или "Не определена".'),
   dispositionExecutorName: z.string().optional().describe('ФИО сотрудника, подготовившего распоряжение.'),
   authorizedSignatory: z.string().optional().describe('Лицо, имеющее полномочия подписи (ФИО).'),
 });
-export type CreditDispositionCardData = z.infer<typeof CreditDispositionCardSchema>;
+export type CreditDispositionCardData = z.infer<typeof CreditDispositionCardZodSchema>;
+
 
 const GenerateCreditDispositionOutputSchema = z.object({
-  dispositionCard: CreditDispositionCardSchema,
+  dispositionCard: CreditDispositionCardZodSchema,
 });
 export type GenerateCreditDispositionOutput = z.infer<typeof GenerateCreditDispositionOutputSchema>;
 
@@ -67,7 +118,7 @@ export async function generateCreditDisposition(input: GenerateCreditDisposition
 const prompt = ai.definePrompt({
   name: 'generateCreditDispositionPrompt',
   input: { schema: GenerateCreditDispositionInputSchema },
-  output: { schema: GenerateCreditDispositionOutputSchema }, // This uses the internal CreditDispositionCardSchema definition
+  output: { schema: GenerateCreditDispositionOutputSchema },
   prompt: `Вы — AI-ассистент, специализирующийся на анализе кредитных договоров на русском языке.
 Ваша задача — тщательно проанализировать предоставленный PDF-документ кредитного договора и извлечь информацию для формирования "Распоряжения о постановке на учет".
 
@@ -78,39 +129,83 @@ const prompt = ai.definePrompt({
 Имя файла (для контекста): {{{fileName}}}
 {{/if}}
 
-Проанализируйте документ и извлеките следующие атрибуты. Если какой-то атрибут отсутствует в договоре или не может быть однозначно определен, оставьте соответствующее поле пустым или со значением по умолчанию (например, false для boolean, пустой массив для dateArray/numberArray). Даты должны быть в формате ГГГГ-ММ-ДД.
+Проанализируйте документ и извлеките следующие атрибуты. Если какой-то атрибут отсутствует в договоре или не может быть однозначно определен, оставьте соответствующее поле пустым или со значением по умолчанию (например, false для boolean, пустой массив для dateArray/objectArray, undefined для optional полей). Даты должны быть в формате ГГГГ-ММ-ДД.
 
 Извлеките следующие данные для dispositionCard:
-- statementNumber: Уникальный идентификатор заявки (если есть).
-- statementDate: Дата заявления (ГГГГ-ММ-ДД, если есть).
+
+**Общие элементы:**
+- statementNumber: Номер заявления в кредитной дороге.
+- statementDate: Дата заявления (ГГГГ-ММ-ДД).
 - borrowerName: Полное юридическое название заемщика.
 - borrowerInn: ИНН заемщика.
 - contractNumber: Номер подписанного кредитного договора.
 - contractDate: Дата подписания договора (ГГГГ-ММ-ДД).
 - creditType: Тип кредита (одно из: "Кредитная линия", "Возобновляемая кредитная линия").
-- limitCurrency: Валюта кредитного лимита (например, RUB, USD, EUR).
-- contractAmount: Общая сумма кредита (число).
+- limitCurrency: Валюта кредитного лимита/общей суммы договора.
+- contractAmount: Общая сумма кредита/договора (число).
+- bankUnitCode: Код подразделения банка, в котором обслуживается заемщик.
+- contractTerm: Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").
 - borrowerAccountNumber: Банковский расчётный счёт заемщика.
-- enterpriseCategory: Признак субъекта МСП (одно из: "Среднее", "Малое", "Микро").
-- creditCommitteeDecision: Есть решение кредитного комитета (true или false).
-- subsidyAgent: Организация, предоставляющая субсидии (если есть).
-- notesAndSpecialConditions: Любые дополнительные замечания и особые условия.
-- assetBusinessModel: Оценка модели управления активом (одно из: "Удерживать для продажи", "Иное").
-- marketTransaction: Определение рыночного характера операции (одно из: "Да", "Нет", "Не применимо").
-- commissionRate: Размер комиссионных сборов (число, например, 1.5 для 1.5%).
-- commissionPaymentSchedule: Список дат оплаты комиссий (массив строк в формате ГГГГ-ММ-ДД).
-- earlyRepaymentAllowed: Разрешено ли частичное/досрочное погашение (true или false).
-- notificationPeriodDays: Количество дней для уведомления кредитора (целое число).
-- earlyRepaymentMoratorium: Запрет на досрочное погашение (true или false).
-- penaltyRate: Величина штрафа за просрочку платежа (в процентах, число, например, 0.1 для 0.1%).
-- penaltyIndexation: Применяется ли увеличение размера неустойки (true или false).
-- sublimits: Массив чисел, представляющих суммы каждого отдельного сублимита, найденного в договоре. Если сублимиты не указаны, это поле можно опустить или оставить пустым массивом.
-- finalCreditQualityCategory: Итоговая категория качества кредита (одно из: "Хорошее", "Проблемное", "Просроченное").
-- dispositionExecutorName: ФИО сотрудника, подготовившего распоряжение (если указано в контексте документа).
-- authorizedSignatory: Лицо, имеющее полномочия подписи от банка (если указано в контексте документа, ФИО).
+- enterpriseCategory: Признак субъекта МСП (одно из: "Среднее", "Малое", "Микро", "Не применимо").
+- creditCommitteeDecisionDetails: Детали решения кредитного комитета (например, номер протокола, дата). Если просто "да/нет", указать "Решение принято" или "Решение отсутствует".
+- subsidyAgent: Организация, предоставляющая субсидии.
+- generalNotesAndSpecialConditions: Общие дополнительные примечания и особые условия.
 
-Убедитесь, что все текстовые описания и извлеченная информация на русском языке, где это применимо (например, названия, примечания).
+**Элементы для МСФО:**
+- sppiTestResult: Результат SPPI-теста.
+- assetOwnershipBusinessModel: Бизнес-модель владения активом (одно из: "Удерживать для продажи", "Удерживать для получения денежных потоков", "Иное").
+- marketTransactionAssessment: Оценка рыночности сделки (одно из: "Рыночная", "Нерыночная", "Не удалось определить").
+
+**Комиссионные сборы:**
+- commissionType: Вид комиссии (одно из: "Фиксированная", "Переменная", "Отсутствует", "Комбинированная").
+- commissionCalculationMethod: Порядок расчета сумм комиссий.
+- commissionPaymentSchedule: Графики платежей комиссий (массив строк в формате ГГГГ-ММ-ДД).
+
+**Условия досрочного погашения (объект earlyRepaymentConditions):**
+- mandatoryEarlyRepaymentAllowed: Возможность обязательного досрочного погашения (true/false).
+- voluntaryEarlyRepaymentAllowed: Возможность добровольного досрочного погашения (true/false).
+- earlyRepaymentFundingSources: Источники финансирования досрочных выплат.
+- earlyRepaymentCommissionRate: Размер комиссий за досрочные выплаты (число, в процентах).
+- principalAndInterestRepaymentOrder: Очередность погашения основного долга и процентов.
+- earlyRepaymentMoratoriumDetails: Ограничительные моратории на досрочное погашение (описание или "Отсутствует").
+
+**Штрафные санкции (объект penaltySanctions):**
+- latePrincipalPaymentPenalty: Размеры штрафов за несвоевременную оплату основной части займа.
+- lateInterestPaymentPenalty: Размеры санкций за задержку оплаты начисленных процентов.
+- lateCommissionPaymentPenalty: Штрафы за неоплату комиссий.
+- penaltyIndexation: Применяется ли увеличение размера неустойки (true/false).
+
+**Информация по сублимитам (массив объектов sublimitDetails):**
+Для каждого сублимита:
+  - sublimitAmount: Сумма сублимита (число).
+  - sublimitCurrency: Валюта сублимита.
+  - sublimitAvailabilityPeriod: Период доступности сублимита.
+  - sublimitExpiryDate: Дата завершения действия сублимита (ГГГГ-ММ-ДД).
+  - sublimitPurpose: Цели, на которые выделялся сублимит.
+  - sublimitInvestmentPhase: Инвестиционная фаза сублимита.
+  - sublimitRepaymentOrder: Особенности порядка погашения задолженности по сублимиту.
+Если сублимиты не найдены, оставьте sublimitDetails пустым массивом или не включайте его.
+
+**Дополнительные финансовые показатели (объект financialIndicatorsAndCalculations):**
+- accruedInterestRate: Процентные ставки для начисленных процентов (число).
+- capitalizedInterestRate: Процентные ставки для капитализированных процентов (число).
+- accruedInterestCalculationRules: Правила и алгоритмы расчета начисленных процентов.
+- interestPaymentRegulations: Регламент уплат процентов.
+- debtAndCommissionReservingParams: Параметры резервирования по долгу и комиссиям.
+- insuranceProductCodes: Специфические коды страховых продуктов.
+- specialContractConditions: Особые условия договора, относящиеся к финансовым расчетам.
+
+**Административные блоки:**
+- finalCreditQualityCategory: Итоговая категория качества кредита (одно из: "Хорошее", "Проблемное", "Просроченное", "Не определена").
+- dispositionExecutorName: ФИО сотрудника, подготовившего распоряжение.
+- authorizedSignatory: Лицо, имеющее полномочия подписи от банка.
+
+Убедитесь, что все текстовые описания и извлеченная информация на русском языке.
 Структурируйте ответ строго согласно указанным полям вывода в объекте 'dispositionCard'.
+Для дат используйте формат ГГГГ-ММ-ДД. Числовые значения должны быть числами, а не строками.
+Поля boolean должны быть true или false.
+Если в документе нет информации для целого объекта (например, earlyRepaymentConditions), этот объект можно опустить.
+Если в документе нет информации для массива объектов (например, sublimitDetails), этот массив должен быть пустым.
 `,
 });
 
@@ -132,10 +227,37 @@ const generateCreditDispositionFlow = ai.defineFlow(
 
     while (attempt < MAX_RETRIES) {
       try {
-        const result = await prompt(input); 
+        // Устанавливаем более мягкие настройки безопасности, если это необходимо для анализа юридических документов
+        const result = await prompt(input, {
+          config: {
+            safetySettings: [
+              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+            ],
+          }
+        });
         const output = result.output;
 
         if (output && output.dispositionCard) {
+          // Убедимся, что массивы существуют, даже если они пустые
+          if (!output.dispositionCard.sublimitDetails) {
+            output.dispositionCard.sublimitDetails = [];
+          }
+          if (!output.dispositionCard.commissionPaymentSchedule) {
+            output.dispositionCard.commissionPaymentSchedule = [];
+          }
+          // Убедимся, что вложенные объекты существуют, если они опциональны
+          if (!output.dispositionCard.earlyRepaymentConditions) {
+             output.dispositionCard.earlyRepaymentConditions = {};
+          }
+          if (!output.dispositionCard.penaltySanctions) {
+             output.dispositionCard.penaltySanctions = {};
+          }
+          if (!output.dispositionCard.financialIndicatorsAndCalculations) {
+             output.dispositionCard.financialIndicatorsAndCalculations = {};
+          }
           return output;
         }
         
@@ -171,3 +293,4 @@ const generateCreditDispositionFlow = ai.defineFlow(
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
+
