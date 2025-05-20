@@ -28,6 +28,7 @@ import {
   FormField, 
   FormItem,
   FormLabel,
+  FormMessage,
 } from "@/components/ui/form";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
@@ -367,7 +368,7 @@ export default function CreditDispositionGenerator() {
         earlyRepaymentConditions: { mandatoryEarlyRepaymentAllowed: false, voluntaryEarlyRepaymentAllowed: false },
         penaltySanctions: { penaltyIndexation: false },
         financialIndicatorsAndCalculations: {},
-      });
+    });
       setFileDataUri(null);
 
       const reader = new FileReader();
@@ -598,7 +599,7 @@ export default function CreditDispositionGenerator() {
 
             return (
             <FormItem className="mb-3 flex flex-col">
-                <Label htmlFor={fieldName as string} className="text-sm font-medium mb-1">{label}</Label>
+                <FormLabel htmlFor={fieldName as string} className="text-sm font-medium mb-1">{label}</FormLabel>
                 {type === 'textarea' || type === 'objectArrayAsJsonString' ? (
                 <Textarea 
                     id={fieldName as string} 
@@ -623,7 +624,7 @@ export default function CreditDispositionGenerator() {
                         <SelectValue placeholder={`Выберите ${label.toLowerCase()}`} />
                         </SelectTrigger>
                         <SelectContent>
-                        <SelectItem value="">Не выбрано</SelectItem>
+                        {/* <SelectItem value="">Не выбрано</SelectItem> */} {/* Removed problematic item */}
                         {options.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                         </SelectContent>
                     </Select>
@@ -723,8 +724,8 @@ export default function CreditDispositionGenerator() {
                     placeholder={readOnly && !fieldValue ? 'Нет данных' : undefined}
                 />
                 )}
-                {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
-                <p className="text-xs text-destructive h-3">{(form.formState.errors as any)[fieldName]?.message || (form.formState.errors as any)[fieldName.split('.')[0]]?.[fieldName.split('.')[1]]?.message || ''}</p>
+                {description && <FormDescription className="text-xs mt-1">{description}</FormDescription>}
+                <FormMessage className="text-xs h-3"/>
             </FormItem>
             );
         }}
