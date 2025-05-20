@@ -29,7 +29,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription, // Added FormDescription here
+  FormDescription,
 } from "@/components/ui/form";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
@@ -38,7 +38,7 @@ const ACCEPTABLE_FILE_EXTENSIONS = ".pdf";
 
 // Schema for individual sublimit details - must match the one in the flow
 const SublimitDetailSchema = z.object({
-  sublimitAmount: z.number().optional().nullable().describe("Сумма сублимита."),
+  sublimitAmount: z.coerce.number().optional().nullable().describe("Сумма сублимита."),
   sublimitCurrency: z.string().optional().describe("Валюта сублимита."),
   sublimitAvailabilityPeriod: z.string().optional().describe("Период доступности сублимита."),
   sublimitExpiryDate: z.union([z.date().nullable(), z.string().optional()]).optional().describe("Дата завершения действия сублимита (ГГГГ-ММ-ДД)."),
@@ -57,7 +57,7 @@ const CreditDispositionCardZodSchema = z.object({
   contractDate: z.union([z.date().nullable(), z.string().optional()]).optional(),
   creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия', '']).optional(),
   limitCurrency: z.string().optional(),
-  contractAmount: z.number().optional().nullable(),
+  contractAmount: z.coerce.number().optional().nullable(),
   bankUnitCode: z.string().optional(),
   contractTerm: z.string().optional(),
   borrowerAccountNumber: z.string().optional(),
@@ -75,7 +75,7 @@ const CreditDispositionCardZodSchema = z.object({
     mandatoryEarlyRepaymentAllowed: z.boolean().optional(),
     voluntaryEarlyRepaymentAllowed: z.boolean().optional(),
     earlyRepaymentFundingSources: z.string().optional(),
-    earlyRepaymentCommissionRate: z.number().optional().nullable(),
+    earlyRepaymentCommissionRate: z.coerce.number().optional().nullable(),
     principalAndInterestRepaymentOrder: z.string().optional(),
     earlyRepaymentMoratoriumDetails: z.string().optional().describe("Ограничительные моратории на возможность досрочно погасить долг (описание условий или \"Отсутствует\")."),
   }).optional().default({}),
@@ -87,8 +87,8 @@ const CreditDispositionCardZodSchema = z.object({
   }).optional().default({}),
   sublimitDetails: z.array(SublimitDetailSchema).optional().default([]),
   financialIndicatorsAndCalculations: z.object({
-    accruedInterestRate: z.number().optional().nullable(),
-    capitalizedInterestRate: z.number().optional().nullable(),
+    accruedInterestRate: z.coerce.number().optional().nullable(),
+    capitalizedInterestRate: z.coerce.number().optional().nullable(),
     accruedInterestCalculationRules: z.string().optional(),
     interestPaymentRegulations: z.string().optional(),
     debtAndCommissionReservingParams: z.string().optional(),
@@ -115,11 +115,14 @@ const formatForDisplay = (value: any, type: 'date' | 'boolean' | 'currency' | 'p
     if (type === 'boolean') {
         return value ? 'Да' : 'Нет';
     }
-    if (type === 'currency' && typeof value === 'number') {
-        return `${value.toLocaleString('ru-RU')} RUB`; // Assuming RUB, can be dynamic
+    if (type === 'currency' && typeof value === 'number') { // This is for display with currency symbol
+        return `${value.toLocaleString('ru-RU')} RUB`; // Assuming RUB for now
     }
     if (type === 'percent' && typeof value === 'number') {
-        return `${value}%`;
+        return `${value.toLocaleString('ru-RU')}%`;
+    }
+    if (type === 'number' && typeof value === 'number') { // Generic number formatting
+        return value.toLocaleString('ru-RU');
     }
     return String(value);
 };
@@ -149,7 +152,7 @@ const renderPdfHtml = (data: FormValues): string => {
                       field('Дата договора', data.contractDate, 'date') +
                       field('Вид кредитования', data.creditType) +
                       field('Валюта лимита/договора', data.limitCurrency) +
-                      field('Сумма договора', data.contractAmount, 'number') + // Should be 'currency' if currency symbol is needed
+                      field('Сумма договора', data.contractAmount, 'number') + 
                       field('Код подразделения банка', data.bankUnitCode) +
                       field('Срок действия договора', data.contractTerm) +
                       field('Расчётный счёт заемщика', data.borrowerAccountNumber) +
@@ -207,7 +210,7 @@ const renderPdfHtml = (data: FormValues): string => {
         data.sublimitDetails.forEach((sl, index) => {
             sublimitsSectionHtml += `<div style="border: 1px solid #eee; padding: 3mm; margin-bottom: 3mm; border-radius: 3px;">`;
             sublimitsSectionHtml += `<h3 style="font-size: 11pt; color: #0055A4; margin-top: 0; margin-bottom: 2mm;">Сублимит ${index + 1}</h3>`;
-            sublimitsSectionHtml += field('Сумма', sl.sublimitAmount, 'number') + // Should be 'currency' if currency symbol is needed
+            sublimitsSectionHtml += field('Сумма', sl.sublimitAmount, 'number') + 
                                    field('Валюта', sl.sublimitCurrency) +
                                    field('Период доступности', sl.sublimitAvailabilityPeriod) +
                                    field('Дата завершения', sl.sublimitExpiryDate, 'date') +
@@ -294,7 +297,7 @@ export default function CreditDispositionGenerator() {
     if (extractedData?.dispositionCard) {
       const rawDataFromAI = extractedData.dispositionCard;
       const processedFormData: Partial<FormValues> = {
-          earlyRepaymentConditions: {}, // Ensure nested objects are initialized
+          earlyRepaymentConditions: {}, 
           penaltySanctions: {},
           financialIndicatorsAndCalculations: {},
           sublimitDetails: [],
@@ -315,7 +318,7 @@ export default function CreditDispositionGenerator() {
             }));
             (processedFormData as any)[key] = parsedSublimits;
             try {
-              (processedFormData as any).sublimitDetailsJson = JSON.stringify(parsedSublimits, null, 2);
+              (processedFormData as any).sublimitDetailsJson = JSON.stringify(parsedSublimits.map(s => ({...s, sublimitExpiryDate: s.sublimitExpiryDate instanceof Date && isValid(s.sublimitExpiryDate) ? format(s.sublimitExpiryDate, 'yyyy-MM-dd') : s.sublimitExpiryDate})), null, 2);
             } catch (e) {
               console.error("Error stringifying sublimits for JSON field:", e);
               (processedFormData as any).sublimitDetailsJson = "[]";
@@ -412,29 +415,28 @@ export default function CreditDispositionGenerator() {
   };
 
  const handleSaveEdits = (values: FormValues) => {
-    let parsedSublimitDetails: SublimitDetail[] = values.sublimitDetails || []; // Start with existing if any
+    let parsedSublimitDetails: SublimitDetail[] = values.sublimitDetails || []; 
     if (values.sublimitDetailsJson && values.sublimitDetailsJson.trim() !== "") {
       try {
         const parsedFromJson = JSON.parse(values.sublimitDetailsJson);
         if (!Array.isArray(parsedFromJson)) throw new Error("JSON не является массивом");
         
-        parsedSublimitDetails = parsedFromJson.map(sl => ({
+        parsedSublimitDetails = parsedFromJson.map((sl:any) => ({
             ...sl,
             sublimitAmount: sl.sublimitAmount === null || sl.sublimitAmount === undefined || String(sl.sublimitAmount).trim() === "" ? null : (isNaN(parseFloat(String(sl.sublimitAmount))) ? null : parseFloat(String(sl.sublimitAmount))),
-            sublimitExpiryDate: parseDateSafe(sl.sublimitExpiryDate) // Will be Date or undefined
+            sublimitExpiryDate: parseDateSafe(sl.sublimitExpiryDate) 
         }));
 
       } catch (e) {
         form.setError("sublimitDetailsJson", { type: "manual", message: `Некорректный формат JSON: ${(e as Error).message}` });
         toast({ title: 'Ошибка JSON в сублимитах', description: `Некорректный формат JSON: ${(e as Error).message}. Изменения для сублимитов не сохранены.`, variant: 'destructive' });
-        return; // Prevent saving if JSON is invalid
+        return; 
       }
     }
 
 
     setExtractedData(prev => {
         if (!prev) return null;
-        // Create a deep copy of values to avoid direct state mutation issues with react-hook-form's internal state
         const updatedValues = JSON.parse(JSON.stringify(values));
         
         const updatedCardData = {
@@ -458,10 +460,9 @@ export default function CreditDispositionGenerator() {
     }
     setIsLoading(true);
     
-    const currentFormData = form.getValues(); // Get latest form values
+    const currentFormData = form.getValues(); 
     let finalSublimitDetails = currentFormData.sublimitDetails || [];
 
-    // If in editing mode and sublimitDetailsJson has content, prioritize it after parsing
     if (isEditing && currentFormData.sublimitDetailsJson && currentFormData.sublimitDetailsJson.trim() !== "" && currentFormData.sublimitDetailsJson.trim() !== "[]") {
         try {
             const parsedJsonSublimits = JSON.parse(currentFormData.sublimitDetailsJson);
@@ -474,7 +475,6 @@ export default function CreditDispositionGenerator() {
             }
         } catch (e) {
             console.warn("JSON для сублимитов невалиден при экспорте, используются данные из sublimitDetails.");
-             // Fallback to sublimitDetails from form state if JSON is bad
         }
     }
     
@@ -491,24 +491,22 @@ export default function CreditDispositionGenerator() {
         pdfRenderArea = document.createElement('div');
         pdfRenderArea.id = pdfRenderAreaId;
         pdfRenderArea.style.position = 'absolute';
-        pdfRenderArea.style.left = '-9999px'; // Position off-screen
+        pdfRenderArea.style.left = '-9999px'; 
         pdfRenderArea.style.top = '0';
-        pdfRenderArea.style.width = '210mm'; // A4 width approx
+        pdfRenderArea.style.width = '210mm'; 
         document.body.appendChild(pdfRenderArea);
     }
     pdfRenderArea.innerHTML = htmlString;
 
     try {
-      await exportHtmlElementToPdf(pdfRenderAreaId, `Распоряжение_${extractedData.dispositionCard.contractNumber || 'бн'}`);
+      await exportHtmlElementToPdf(pdfRenderAreaId, `Распоряжение_${dataForPdf.contractNumber || 'бн'}`);
       toast({ title: 'Экспорт в PDF успешен' });
     } catch (e) {
       toast({ title: 'Ошибка экспорта PDF', description: (e as Error).message, variant: 'destructive' });
     } finally {
       setIsLoading(false);
-      if (pdfRenderArea) { // Clean up
+      if (pdfRenderArea) { 
           pdfRenderArea.innerHTML = '';
-          // Optionally remove if it was dynamically added for just this export:
-          // if (document.body.contains(pdfRenderArea)) document.body.removeChild(pdfRenderArea);
       }
     }
   };
@@ -527,7 +525,7 @@ export default function CreditDispositionGenerator() {
                     sublimitAmount: sl.sublimitAmount === null || sl.sublimitAmount === undefined || String(sl.sublimitAmount).trim() === "" ? null : (isNaN(parseFloat(String(sl.sublimitAmount))) ? null : parseFloat(String(sl.sublimitAmount))),
                     sublimitExpiryDate: sl.sublimitExpiryDate instanceof Date && isValid(sl.sublimitExpiryDate)
                         ? format(sl.sublimitExpiryDate, "yyyy-MM-dd")
-                        : (typeof sl.sublimitExpiryDate === 'string' ? sl.sublimitExpiryDate : undefined) // keep string if already string
+                        : (typeof sl.sublimitExpiryDate === 'string' ? sl.sublimitExpiryDate : undefined) 
                 }));
             }
         } catch (e) {
@@ -556,7 +554,7 @@ export default function CreditDispositionGenerator() {
     const blob = new Blob([jsonString], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `Распоряжение_${extractedData.dispositionCard.contractNumber || 'бн'}.json`;
+    link.download = `Распоряжение_${dataToExport.contractNumber || 'бн'}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -576,13 +574,12 @@ export default function CreditDispositionGenerator() {
     return (
       <FormField
         control={form.control}
-        name={fieldName as keyof FormValues} // Cast needed due to nested paths
+        name={fieldName as keyof FormValues} 
         render={({ field }) => {
             let fieldValue = field.value;
              if (type === "text" || type === "textarea") {
                 fieldValue = field.value === undefined || field.value === null ? "" : field.value;
             } else if (type === "number") {
-                // For number inputs, an empty string is often preferred over 0 for display
                  fieldValue = field.value === undefined || field.value === null || field.value === "" ? "" : String(field.value);
             } else if (type === 'checkbox') {
                 fieldValue = field.value === undefined || field.value === null ? false : field.value;
@@ -626,7 +623,7 @@ export default function CreditDispositionGenerator() {
                         </SelectTrigger>
                         <SelectContent>
                         
-                        {options.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                        {options.map(opt => <SelectItem key={opt} value={opt}>{opt || "Не выбрано"}</SelectItem>)}
                         </SelectContent>
                     </Select>
                     )}
@@ -710,7 +707,7 @@ export default function CreditDispositionGenerator() {
                             </Popover>
                         )}
                      </div>
-                ) : ( // text or number
+                ) : ( 
                 <Input 
                     id={fieldName as string} 
                     type={type === 'number' ? 'number' : 'text'} 
@@ -775,13 +772,12 @@ export default function CreditDispositionGenerator() {
         </Card>
       )}
       
-      {/* Hidden div for PDF rendering */}
       <div id="pdf-hidden-render-area" style={{ display: 'none' }}></div>
 
       {extractedData && (
         <Form {...form}> 
           <form onSubmit={form.handleSubmit(handleSaveEdits)}>
-            <Card id="disposition-card-view" className="mt-4 shadow-xl rounded-xl"> {/* This ID is NOT for PDF export, but can be kept for other uses if any */}
+            <Card id="disposition-card-view" className="mt-4 shadow-xl rounded-xl"> 
               <CardHeader className="flex flex-row items-center justify-between pb-4">
                   <div>
                       <CardTitle className="text-xl">Проект распоряжения</CardTitle>

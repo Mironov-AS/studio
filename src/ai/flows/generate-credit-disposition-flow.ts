@@ -25,7 +25,7 @@ export type GenerateCreditDispositionInput = z.infer<typeof GenerateCreditDispos
 
 // Schema for individual sublimit details
 const SublimitDetailSchema = z.object({
-  sublimitAmount: z.number().optional().describe("Сумма сублимита."),
+  sublimitAmount: z.coerce.number().optional().describe("Сумма сублимита (только числовое значение)."),
   sublimitCurrency: z.string().optional().describe("Валюта сублимита."),
   sublimitAvailabilityPeriod: z.string().optional().describe("Период доступности сублимита."),
   sublimitExpiryDate: z.union([z.date(), z.string()]).optional().describe("Дата завершения действия сублимита (ГГГГ-ММ-ДД)."),
@@ -46,7 +46,7 @@ const CreditDispositionCardZodSchema = z.object({
   contractDate: z.union([z.date(), z.string()]).optional().describe('Дата подписания договора (ГГГГ-ММ-ДД).'),
   creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия']).optional().describe('Тип кредита.'),
   limitCurrency: z.string().optional().describe('Валюта кредитного лимита/общей суммы договора (например, RUB, USD).'),
-  contractAmount: z.number().optional().describe('Общая сумма кредита/договора.'),
+  contractAmount: z.coerce.number().optional().describe('Общая сумма кредита/договора (только числовое значение).'),
   bankUnitCode: z.string().optional().describe('Код подразделения банка, в котором обслуживается заемщик.'),
   contractTerm: z.string().optional().describe('Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").'),
   borrowerAccountNumber: z.string().optional().describe('Банковский расчётный счёт заемщика.'),
@@ -70,7 +70,7 @@ const CreditDispositionCardZodSchema = z.object({
     mandatoryEarlyRepaymentAllowed: z.boolean().optional().describe("Возможность обязательного досрочного погашения (true/false)."),
     voluntaryEarlyRepaymentAllowed: z.boolean().optional().describe("Возможность добровольного досрочного погашения (true/false)."),
     earlyRepaymentFundingSources: z.string().optional().describe("Источники финансирования досрочных выплат."),
-    earlyRepaymentCommissionRate: z.number().optional().describe("Размер комиссий за досрочные выплаты (в процентах)."),
+    earlyRepaymentCommissionRate: z.coerce.number().optional().describe("Размер комиссий за досрочные выплаты (в процентах, только числовое значение)."),
     principalAndInterestRepaymentOrder: z.string().optional().describe("Очередность погашения основного долга и процентов при досрочном погашении."),
     earlyRepaymentMoratoriumDetails: z.string().optional().describe("Ограничительные моратории на возможность досрочно погасить долг (описание условий или \"Отсутствует\")."),
   }).optional().describe("Детали условий досрочного погашения."),
@@ -88,8 +88,8 @@ const CreditDispositionCardZodSchema = z.object({
 
   // Дополнительные финансовые показатели и регламенты расчетов
   financialIndicatorsAndCalculations: z.object({
-    accruedInterestRate: z.number().optional().describe("Процентные ставки для начисленных процентов (число, например, 12.5 для 12.5%)."),
-    capitalizedInterestRate: z.number().optional().describe("Процентные ставки для капитализированных процентов (число)."),
+    accruedInterestRate: z.coerce.number().optional().describe("Процентные ставки для начисленных процентов (число, например, 12.5 для 12.5%)."),
+    capitalizedInterestRate: z.coerce.number().optional().describe("Процентные ставки для капитализированных процентов (число)."),
     accruedInterestCalculationRules: z.string().optional().describe("Правила и алгоритмы расчета начисленных процентов."),
     interestPaymentRegulations: z.string().optional().describe("Регламент уплат процентов."),
     debtAndCommissionReservingParams: z.string().optional().describe("Параметры резервирования по долгу и комиссиям."),
@@ -142,7 +142,7 @@ const prompt = ai.definePrompt({
 - contractDate: Дата подписания договора (ГГГГ-ММ-ДД).
 - creditType: Тип кредита (одно из: "Кредитная линия", "Возобновляемая кредитная линия").
 - limitCurrency: Валюта кредитного лимита/общей суммы договора.
-- contractAmount: Общая сумма кредита/договора (число).
+- contractAmount: Общая сумма кредита/договора (только числовое значение, например, 1500000.75, без текста или символов валют).
 - bankUnitCode: Код подразделения банка, в котором обслуживается заемщик.
 - contractTerm: Срок действия договора (например, "36 месяцев", "до ДД.ММ.ГГГГ").
 - borrowerAccountNumber: Банковский расчётный счёт заемщика.
@@ -165,7 +165,7 @@ const prompt = ai.definePrompt({
 - mandatoryEarlyRepaymentAllowed: Возможность обязательного досрочного погашения (true/false).
 - voluntaryEarlyRepaymentAllowed: Возможность добровольного досрочного погашения (true/false).
 - earlyRepaymentFundingSources: Источники финансирования досрочных выплат.
-- earlyRepaymentCommissionRate: Размер комиссий за досрочные выплаты (число, в процентах).
+- earlyRepaymentCommissionRate: Размер комиссий за досрочные выплаты (в процентах, только числовое значение).
 - principalAndInterestRepaymentOrder: Очередность погашения основного долга и процентов.
 - earlyRepaymentMoratoriumDetails: Ограничительные моратории на досрочное погашение (описание или "Отсутствует").
 
@@ -177,7 +177,7 @@ const prompt = ai.definePrompt({
 
 **Информация по сублимитам (массив объектов sublimitDetails):**
 Для каждого сублимита:
-  - sublimitAmount: Сумма сублимита (число).
+  - sublimitAmount: Сумма сублимита (только числовое значение, например 500000).
   - sublimitCurrency: Валюта сублимита.
   - sublimitAvailabilityPeriod: Период доступности сублимита.
   - sublimitExpiryDate: Дата завершения действия сублимита (ГГГГ-ММ-ДД).
@@ -187,7 +187,7 @@ const prompt = ai.definePrompt({
 Если сублимиты не найдены, оставьте sublimitDetails пустым массивом или не включайте его.
 
 **Дополнительные финансовые показатели (объект financialIndicatorsAndCalculations):**
-- accruedInterestRate: Процентные ставки для начисленных процентов (число).
+- accruedInterestRate: Процентные ставки для начисленных процентов (число, например 12.5).
 - capitalizedInterestRate: Процентные ставки для капитализированных процентов (число).
 - accruedInterestCalculationRules: Правила и алгоритмы расчета начисленных процентов.
 - interestPaymentRegulations: Регламент уплат процентов.
