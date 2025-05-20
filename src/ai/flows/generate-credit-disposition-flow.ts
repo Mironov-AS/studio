@@ -6,7 +6,7 @@
  * - generateCreditDisposition - Function to handle credit disposition generation.
  * - GenerateCreditDispositionInput - Input type for the function.
  * - GenerateCreditDispositionOutput - Output type for the function.
- * - CreditDispositionCardSchema - Zod schema for the disposition card.
+ * - CreditDispositionCardData - The type for the disposition card data.
  */
 
 import {ai} from '@/ai/genkit';
@@ -22,7 +22,8 @@ const GenerateCreditDispositionInputSchema = z.object({
 });
 export type GenerateCreditDispositionInput = z.infer<typeof GenerateCreditDispositionInputSchema>;
 
-export const CreditDispositionCardSchema = z.object({
+// Made local: Zod schema for the disposition card. Not exported as an object.
+const CreditDispositionCardSchema = z.object({
   statementNumber: z.string().optional().describe('Уникальный идентификатор заявки.'),
   statementDate: z.union([z.date(), z.string()]).optional().describe('Дата заявления (ГГГГ-ММ-ДД).'),
   borrowerName: z.string().optional().describe('Полное юридическое название заемщика.'),
@@ -66,7 +67,7 @@ export async function generateCreditDisposition(input: GenerateCreditDisposition
 const prompt = ai.definePrompt({
   name: 'generateCreditDispositionPrompt',
   input: { schema: GenerateCreditDispositionInputSchema },
-  output: { schema: GenerateCreditDispositionOutputSchema },
+  output: { schema: GenerateCreditDispositionOutputSchema }, // This uses the internal CreditDispositionCardSchema definition
   prompt: `Вы — AI-ассистент, специализирующийся на анализе кредитных договоров на русском языке.
 Ваша задача — тщательно проанализировать предоставленный PDF-документ кредитного договора и извлечь информацию для формирования "Распоряжения о постановке на учет".
 
@@ -173,3 +174,4 @@ const generateCreditDispositionFlow = ai.defineFlow(
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
+

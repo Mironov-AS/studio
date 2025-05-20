@@ -14,8 +14,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { generateCreditDisposition, type GenerateCreditDispositionInput, type GenerateCreditDispositionOutput, CreditDispositionCardSchema } from '@/ai/flows/generate-credit-disposition-flow';
-import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save } from 'lucide-react';
+// Import types, but not the schema object from the flow
+import { generateCreditDisposition, type GenerateCreditDispositionInput, type GenerateCreditDispositionOutput, type CreditDispositionCardData } from '@/ai/flows/generate-credit-disposition-flow';
+import { Loader2, FileUp, Sparkles, Download, FileArchive, Edit3, Save, Trash2 } from 'lucide-react'; // Added Trash2
 import { exportHtmlElementToPdf } from '@/lib/pdfUtils';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -25,25 +26,58 @@ import { cn } from "@/lib/utils";
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".pdf";
 
-type FormValues = z.infer<typeof CreditDispositionCardSchema>;
+// Define the Zod schema for form validation directly in the client component
+// This schema must be identical to the one used in the AI flow's output.
+const CreditDispositionCardSchema = z.object({
+  statementNumber: z.string().optional().describe('Уникальный идентификатор заявки.'),
+  statementDate: z.union([z.date(), z.string()]).optional().describe('Дата заявления (ГГГГ-ММ-ДД).'),
+  borrowerName: z.string().optional().describe('Полное юридическое название заемщика.'),
+  borrowerInn: z.string().optional().describe('ИНН заемщика.'),
+  contractNumber: z.string().optional().describe('Номер подписанного кредитного договора.'),
+  contractDate: z.union([z.date(), z.string()]).optional().describe('Дата подписания договора (ГГГГ-ММ-ДД).'),
+  creditType: z.enum(['Кредитная линия', 'Возобновляемая кредитная линия']).optional().describe('Тип кредита.'),
+  limitCurrency: z.string().optional().describe('Валюта кредитного лимита (например, RUB, USD).'),
+  contractAmount: z.number().optional().describe('Общая сумма кредита.'),
+  borrowerAccountNumber: z.string().optional().describe('Банковский расчётный счёт заемщика.'),
+  enterpriseCategory: z.enum(['Среднее', 'Малое', 'Микро']).optional().describe('Признак субъекта МСП.'),
+  creditCommitteeDecision: z.boolean().optional().describe('Есть решение кредитного комитета (true/false).'),
+  subsidyAgent: z.string().optional().describe('Организация, предоставляющая субсидии.'),
+  notesAndSpecialConditions: z.string().optional().describe('Любые дополнительные замечания и особые условия.'),
+  assetBusinessModel: z.enum(['Удерживать для продажи', 'Иное']).optional().describe('Оценка модели управления активом.'),
+  marketTransaction: z.enum(['Да', 'Нет', 'Не применимо']).optional().describe('Определение рыночного характера операции.'),
+  commissionRate: z.number().optional().describe('Размер комиссионных сборов (число).'),
+  commissionPaymentSchedule: z.array(z.union([z.date(), z.string()])).optional().describe("Список дат оплаты комиссий (массив дат в формате ГГГГ-ММ-ДД)."),
+  earlyRepaymentAllowed: z.boolean().optional().describe('Разрешено ли частичное/досрочное погашение (true/false).'),
+  notificationPeriodDays: z.number().int().optional().describe('Количество дней для уведомления кредитора.'),
+  earlyRepaymentMoratorium: z.boolean().optional().describe('Запрет на досрочное погашение (true/false).'),
+  penaltyRate: z.number().optional().describe('Величина штрафа за просрочку платежа (в процентах, число).'),
+  penaltyIndexation: z.boolean().optional().describe('Применяется ли увеличение размера неустойки (true/false).'),
+  sublimitVolumeAndAvailability: z.number().optional().describe('Отдельные лимиты внутри общего объема кредита (число).'),
+  finalCreditQualityCategory: z.enum(['Хорошее', 'Проблемное', 'Просроченное']).optional().describe('Соответствие нормам Центрального банка.'),
+  dispositionExecutorName: z.string().optional().describe('ФИО сотрудника, подготовившего распоряжение.'),
+  authorizedSignatory: z.string().optional().describe('Лицо, имеющее полномочия подписи (ФИО).'),
+});
+
+type FormValues = z.infer<typeof CreditDispositionCardSchema>; // Use locally defined schema for form values
 
 export default function CreditDispositionGenerator() {
   const [file, setFile] = useState<File | null>(null);
   const [fileDataUri, setFileDataUri] = useState<string | null>(null);
+  // Use the imported CreditDispositionCardData type for the state that holds AI output
   const [extractedData, setExtractedData] = useState<GenerateCreditDispositionOutput | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(CreditDispositionCardSchema),
+    resolver: zodResolver(CreditDispositionCardSchema), // Use locally defined schema
     defaultValues: {},
   });
 
   useEffect(() => {
     if (extractedData) {
       // Dates might come as strings, convert them to Date objects for react-hook-form and Calendar
-      const formData = { ...extractedData.dispositionCard };
+      const formData: Partial<CreditDispositionCardData> = { ...extractedData.dispositionCard };
       if (formData.statementDate && typeof formData.statementDate === 'string') {
         try { formData.statementDate = parseISO(formData.statementDate) as any; } catch (e) { /* keep as string if unparseable */ }
       }
@@ -58,7 +92,7 @@ export default function CreditDispositionGenerator() {
           return d;
         });
       }
-      form.reset(formData);
+      form.reset(formData as FormValues); // Cast to FormValues
       setIsEditing(false); // Start in view mode after data extraction
     }
   }, [extractedData, form]);
@@ -96,7 +130,7 @@ export default function CreditDispositionGenerator() {
     setExtractedData(null);
     form.reset({});
     try {
-      const result = await generateCreditDisposition({ documentDataUri: fileDataUri, fileName: file.name });
+      const result: GenerateCreditDispositionOutput = await generateCreditDisposition({ documentDataUri: fileDataUri, fileName: file.name });
       setExtractedData(result);
       toast({ title: 'Данные успешно извлечены', description: 'Проверьте и при необходимости отредактируйте поля.' });
     } catch (error) {
@@ -110,7 +144,7 @@ export default function CreditDispositionGenerator() {
   const handleSaveEdits = () => {
     const currentValues = form.getValues();
     // Update extractedData with potentially edited values for export
-    setExtractedData(prev => prev ? ({ ...prev, dispositionCard: currentValues as any }) : null);
+    setExtractedData(prev => prev ? ({ ...prev, dispositionCard: currentValues as CreditDispositionCardData }) : null);
     setIsEditing(false);
     toast({ title: 'Изменения сохранены (локально)', description: 'Теперь вы можете экспортировать данные.' });
   };
@@ -388,3 +422,4 @@ export default function CreditDispositionGenerator() {
     </div>
   );
 }
+
