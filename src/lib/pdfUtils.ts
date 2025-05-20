@@ -1,3 +1,4 @@
+
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -15,58 +16,51 @@ async function addCanvasToPdf(pdf: jsPDF, canvas: HTMLCanvasElement, initialYPos
   const imgProps = pdf.getImageProperties(imgData);
   const pdfWidth = pdf.internal.pageSize.getWidth();
   const pdfPageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 15; // Consistent margin
+  const margin = 15; // Consistent margin for PDF content
 
   const contentWidth = pdfWidth - margin * 2;
-  // Calculate the height of the image if it were scaled to contentWidth
-  // This is not directly used for PDF segment height, but helps understand scale
-  // const scaledContentHeight = (imgProps.height * contentWidth) / imgProps.width;
-
-
+  
   let currentYOnPage = initialYPosition;
-  let sourceImageY = 0; // Y position in the source canvas (original full image)
+  let sourceImageY = 0; // Y position in the source canvas
 
   while (sourceImageY < imgProps.height) {
-    if (currentYOnPage !== initialYPosition && sourceImageY !== 0) { // Need a new page if not the first chunk overall
+    // Add new page if it's not the first chunk of the image AND currentYOnPage is not at the initial position
+    // or if currentYOnPage plus a minimal content height would exceed page height.
+    if (sourceImageY > 0 && (pdfPageHeight - currentYOnPage - margin < 20 /* min content height */)) { 
       pdf.addPage();
       currentYOnPage = margin; // Reset Y for new page
     }
 
-    // Calculate how much of the PDF page height is available for this chunk
     const availablePdfPageHeight = pdfPageHeight - currentYOnPage - margin;
     
-    // Convert this available PDF height back to source image pixels
-    // (how many pixels from the source image can fit into availablePdfPageHeight)
+    // How many pixels from the source image can fit into availablePdfPageHeight
     const sourceSliceHeight = Math.min(
-      imgProps.height - sourceImageY, // Remaining height of the source image
-      availablePdfPageHeight * (imgProps.width / contentWidth) // Max source image height that fits
+      imgProps.height - sourceImageY, 
+      availablePdfPageHeight * (imgProps.width / contentWidth) 
     );
 
-    if (sourceSliceHeight <= 0) { // No more content or no space
+    if (sourceSliceHeight <= 0) {
         break;
     }
 
-    // Create a temporary canvas for the current slice
     const segmentCanvas = document.createElement('canvas');
     segmentCanvas.width = imgProps.width;
     segmentCanvas.height = sourceSliceHeight;
     const segmentCtx = segmentCanvas.getContext('2d');
     
     if (segmentCtx) {
-      // Draw the slice from the original large canvas onto the temporary segment canvas
       segmentCtx.drawImage(canvas, 0, sourceImageY, imgProps.width, sourceSliceHeight, 0, 0, imgProps.width, sourceSliceHeight);
     }
     
     const segmentImgData = segmentCanvas.toDataURL('image/png');
-    // Calculate the height this segment will occupy in the PDF
     const segmentPdfHeight = (sourceSliceHeight * contentWidth) / imgProps.width;
 
     pdf.addImage(segmentImgData, 'PNG', margin, currentYOnPage, contentWidth, segmentPdfHeight);
 
-    currentYOnPage += segmentPdfHeight + 5; // Add some spacing for the next element on the same page
+    currentYOnPage += segmentPdfHeight; // Update Y for next segment or next content block
     sourceImageY += sourceSliceHeight;
   }
-  return currentYOnPage; // Return the Y position after adding this content
+  return currentYOnPage; 
 }
 
 
@@ -77,46 +71,32 @@ export const exportToPdf = async (productData: ProductData, techSpec: string, fi
   const margin = 15;
   let yPosition = margin;
 
-  // Add a title (text-based)
-  // This might still have issues if the chosen font doesn't support Cyrillic well.
-  // Using 'Helvetica' as a very basic fallback.
   try {
-    // jsPDF doesn't bundle Arial. It might try to use a system font if available,
-    // but this is unreliable for Cyrillic without embedding.
-    // Helvetica is one of the 14 standard PDF fonts, but with limited charsets.
     pdf.setFont('Helvetica', 'bold'); 
   } catch (e) {
     console.warn("Failed to set font, jsPDF will use its default.");
   }
-  pdf.setFontSize(18); // Adjusted title font size
+  pdf.setFontSize(18); 
   pdf.setTextColor(40, 40, 40);
   const titleText = 'VisionCraft: Документация по продукту';
-  // Wrap title text if it's too long
   const titleLines = pdf.splitTextToSize(titleText, pageWidth - margin * 2);
   pdf.text(titleLines, pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += titleLines.length * 7 + 10; // 7 is approx line height for 18pt font, 10 is spacing
+  yPosition += titleLines.length * 7 + 10; 
 
-  // Create a hidden div to render all main content for html2canvas
   const renderDiv = document.createElement('div');
-  // Apply styles that will be used by html2canvas
   renderDiv.style.fontFamily = 'var(--font-geist-sans), Arial, "Times New Roman", sans-serif';
-  renderDiv.style.fontSize = '12px'; // Use px for html2canvas consistency
+  renderDiv.style.fontSize = '12px'; 
   renderDiv.style.color = '#333333';
-  // Approximate A4 content width in pixels (A4 width 210mm - 2*margin) * (DPI/25.4)
-  // Using a common web DPI of 96: (210 - 30) * (96 / 25.4) ~= 680px.
-  // Let html2canvas determine width based on content if possible, or set fixed.
   renderDiv.style.width = '680px'; 
   renderDiv.style.padding = '10px';
   renderDiv.style.lineHeight = '1.6';
   renderDiv.style.wordWrap = 'break-word';
-  renderDiv.style.backgroundColor = '#ffffff'; // Ensure a white background for the canvas
+  renderDiv.style.backgroundColor = '#ffffff'; 
 
-  // Make it part of the DOM but off-screen for html2canvas to render
   renderDiv.style.position = 'absolute';
-  renderDiv.style.left = '-9999px'; // Position off-screen
-  renderDiv.style.top = '0px'; // Keep top 0 for scroll calculations if any
+  renderDiv.style.left = '-9999px'; 
+  renderDiv.style.top = '0px'; 
 
-  // Styles for headings and paragraphs within the renderDiv
   const styleTag = document.createElement('style');
   styleTag.innerHTML = `
     .render-div-content h1 { font-size: 16px; color: #008080; margin-top: 15px; margin-bottom: 8px; font-weight: bold; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; }
@@ -138,32 +118,33 @@ export const exportToPdf = async (productData: ProductData, techSpec: string, fi
   ];
 
   sections.forEach(section => {
-    // Sanitize content slightly by replacing multiple newlines with single <br>s, then handle single newlines
     const formattedContent = section.content
-      .replace(/\n\s*\n/g, '<br><br>') // Preserve paragraph breaks
-      .replace(/\n/g, '<br>');       // Convert single newlines
+      .replace(/\n\s*\n/g, '<br><br>') 
+      .replace(/\n/g, '<br>');       
     htmlContent += `<h1>${section.title}</h1><p>${formattedContent}</p>`;
   });
 
   htmlContent += `<h1>Техническое Задание</h1><pre>${techSpec}</pre>`;
   renderDiv.innerHTML = htmlContent;
   
-  // Wait for browser to render the content in renderDiv
-  await new Promise(resolve => setTimeout(resolve, 200)); // Increased delay slightly
+  await new Promise(resolve => setTimeout(resolve, 200)); 
 
   const canvas = await html2canvas(renderDiv, {
-    scale: 2, // Higher scale for better quality
+    scale: 2, 
     useCORS: true,
     logging: false,
-    backgroundColor: null, // Use the div's background color
-    width: renderDiv.offsetWidth, // Use offsetWidth for more accurate width
-    height: renderDiv.offsetHeight, // Use offsetHeight for accurate height
-    windowWidth: renderDiv.scrollWidth, // Ensure full content is captured
+    backgroundColor: null, 
+    width: renderDiv.offsetWidth, 
+    height: renderDiv.offsetHeight, 
+    windowWidth: renderDiv.scrollWidth, 
     windowHeight: renderDiv.scrollHeight,
   });
 
   document.body.removeChild(renderDiv);
-  document.head.removeChild(styleTag);
+  if (document.head.contains(styleTag)) { // Check if styleTag is still in head
+      document.head.removeChild(styleTag);
+  }
+
 
   await addCanvasToPdf(pdf, canvas, yPosition);
 
@@ -171,41 +152,48 @@ export const exportToPdf = async (productData: ProductData, techSpec: string, fi
 };
 
 export const exportHtmlElementToPdf = async (elementId: string, fileName: string = 'document') => {
-  const input = document.getElementById(elementId);
-  if (!input) {
+  const inputElement = document.getElementById(elementId);
+  if (!inputElement) {
     console.error(`Element with id ${elementId} not found.`);
     throw new Error(`Element with id ${elementId} not found.`);
   }
   
-  const originalStyle = {
-      fontFamily: input.style.fontFamily,
-      width: input.style.width,
-      height: input.style.height,
-  };
+  // Clone the element to avoid modifying the live DOM element directly if styles are temporarily changed
+  const clonedElement = inputElement.cloneNode(true) as HTMLElement;
+  clonedElement.style.position = 'absolute';
+  clonedElement.style.left = '-9999px'; // Position off-screen
+  clonedElement.style.top = '0';
+  clonedElement.style.zIndex = '-1'; // Ensure it's not visible but still renderable
+  clonedElement.style.display = 'block'; // Ensure it's display block for html2canvas
+  clonedElement.style.width = inputElement.scrollWidth + 'px'; // Set explicit width for full capture
 
-  // Attempt to ensure a Cyrillic-supporting font family from CSS variables
-  const currentFontFamily = window.getComputedStyle(input).fontFamily;
-  if (!currentFontFamily.toLowerCase().includes('geist')) {
-    input.style.fontFamily = `var(--font-geist-sans), ${currentFontFamily}, Arial, sans-serif`;
-  }
-  
-  const canvas = await html2canvas(input, {
-    scale: 2,
+  // If the element to be exported has an inner scrollable div, this needs to be handled better.
+  // For now, we assume the element itself (or its direct children) determines the scrollHeight.
+
+  document.body.appendChild(clonedElement);
+
+  // Ensure fonts are loaded and element is rendered
+  await new Promise(resolve => setTimeout(resolve, 300));
+
+
+  const canvas = await html2canvas(clonedElement, {
+    scale: 2, // Increase scale for better quality
     useCORS: true,
     logging: false,
-    backgroundColor: null,
-    width: input.scrollWidth, // Capture full scrollable width
-    height: input.scrollHeight, // Capture full scrollable height
-    windowWidth: input.scrollWidth,
-    windowHeight: input.scrollHeight,
+    backgroundColor: window.getComputedStyle(clonedElement).backgroundColor || '#ffffff', // Use element's BG or default to white
+    width: clonedElement.scrollWidth, 
+    height: clonedElement.scrollHeight, 
+    windowWidth: clonedElement.scrollWidth,
+    windowHeight: clonedElement.scrollHeight,
+    scrollX: 0, // Ensure we capture from the beginning
+    scrollY: 0,
   });
 
-  // Restore original styles if they were changed
-  input.style.fontFamily = originalStyle.fontFamily;
-  // Note: Restoring width/height might not be necessary if they weren't changed or if originals were percentages/auto
+  document.body.removeChild(clonedElement);
 
   const pdf = new jsPDF('p', 'mm', 'a4');
-  await addCanvasToPdf(pdf, canvas, 15); // Start from 'margin' Y position
+  await addCanvasToPdf(pdf, canvas, 10); // Start from a small margin
 
   pdf.save(`${fileName}.pdf`);
 };
+
