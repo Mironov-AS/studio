@@ -29,9 +29,9 @@ export default function HomePage() {
       icon: <Layers className="h-8 w-8" />,
     },
     {
-      title: 'Контроль Договоров',
-      description: 'Анализ договоров, извлечение условий, событий и формирование распоряжений с помощью AI.',
-      href: '/contract-control',
+      title: 'Договорной Помощник',
+      description: 'Анализ договоров, извлечение условий, событий, формирование распоряжений и чат с AI по документу.',
+      href: '/contract-assistant',
       icon: <FileSignature className="h-8 w-8" />,
     },
     {
