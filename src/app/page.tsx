@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive } from 'lucide-react'; // Added FileArchive
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode } from 'lucide-react'; // Added FileArchive, SearchCode
 
 export default function HomePage() {
   const services = [
@@ -81,6 +81,12 @@ export default function HomePage() {
       description: 'Минимизация рисков пользователей от неисполнения обязательств контрагентами.',
       href: '/deal-insurance',
       icon: <ShieldAlert className="h-8 w-8" />,
+    },
+    {
+      title: 'Проверка реестра платежей на триггеры КСКБ',
+      description: 'Автоматическая сверка платежей из Excel по заданному списку триггеров.',
+      href: '/payment-trigger-check',
+      icon: <SearchCode className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
