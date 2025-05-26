@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { nanoid } from 'nanoid'; // For unique IDs
+import { cn } from "@/lib/utils"; // Added missing import
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".xlsx,.xls";
 
