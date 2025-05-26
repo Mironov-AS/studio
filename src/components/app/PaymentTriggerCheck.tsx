@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { nanoid } from 'nanoid'; // For unique IDs
-import { cn } from "@/lib/utils"; // Added missing import
+import { cn } from "@/lib/utils";
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".xlsx,.xls";
 
@@ -37,6 +37,17 @@ interface Trigger {
   name: string;
   criteria: TriggerCriterion[];
 }
+
+// List of common headers for "purpose of payment" columns (case-insensitive check will be applied)
+const COMMON_PURPOSE_COLUMN_HEADERS = [
+  "назначение платежа",
+  "описание операции",
+  "детали платежа",
+  "комментарий",
+  "наименование операции",
+  "основание платежа",
+  "примечание"
+];
 
 export default function PaymentTriggerCheck() {
   const [rawPayments, setRawPayments] = useState<PaymentRecord[]>([]);
@@ -144,7 +155,7 @@ export default function PaymentTriggerCheck() {
   const handleEditTrigger = (trigger: Trigger) => {
     setEditingTrigger(trigger);
     setCurrentTriggerName(trigger.name);
-    setCurrentCriteria([...trigger.criteria]); // Create a new array for criteria
+    setCurrentCriteria([...trigger.criteria]); 
   };
   
   const handleCancelEditTrigger = () => {
@@ -163,35 +174,61 @@ export default function PaymentTriggerCheck() {
       toast({ title: "Нет данных", description: "Сначала загрузите реестр платежей.", variant: "destructive" });
       return;
     }
-    if (triggers.length === 0) {
-      toast({ title: "Нет триггеров", description: "Добавьте хотя бы один триггер для проверки.", variant: "destructive" });
-      // return; // Allow processing even without triggers, will just show "not found"
-    }
 
     setIsProcessing(true);
     const updatedPayments = rawPayments.map(payment => {
       let status = "не найден";
-      let triggeredBy = "";
+      let triggeredByName = "";
 
       for (const trigger of triggers) {
-        let allCriteriaMet = trigger.criteria.length > 0; // Assume true if no criteria (should not happen with validation)
+        let allCriteriaForThisTriggerMet = trigger.criteria.length > 0; // A trigger must have criteria to fire
+        if (trigger.criteria.length === 0) continue; // Skip triggers without criteria
+
         for (const criterion of trigger.criteria) {
           const cellValue = payment[criterion.columnHeader];
           const cellValueString = String(cellValue === null || cellValue === undefined ? "" : cellValue).toLowerCase();
-          const searchTextLower = criterion.searchText.toLowerCase();
+          const criterionSearchTextLower = criterion.searchText.toLowerCase();
           
-          if (!cellValueString.includes(searchTextLower)) {
-            allCriteriaMet = false;
+          let currentCriterionMet = false;
+          const columnHeaderLower = criterion.columnHeader.toLowerCase();
+
+          if (COMMON_PURPOSE_COLUMN_HEADERS.includes(columnHeaderLower)) {
+            // Word-by-word OR logic for "purpose of payment" columns
+            const searchWords = criterionSearchTextLower.split(/\s+/).filter(word => word.length > 0);
+            if (searchWords.length > 0) {
+              for (const word of searchWords) {
+                if (cellValueString.includes(word)) {
+                  currentCriterionMet = true;
+                  break;
+                }
+              }
+            } else if (criterionSearchTextLower === "" && cellValueString === "") { 
+              // Empty search text could match empty cell, but generally criteria should have text.
+              // This case is unlikely due to UI validation for criterion.searchText.
+              currentCriterionMet = true;
+            }
+          } else {
+            // Full phrase substring match for other columns
+            if (criterionSearchTextLower === "" && cellValueString === "") {
+                currentCriterionMet = true;
+            } else if (criterionSearchTextLower !== "") {
+                 currentCriterionMet = cellValueString.includes(criterionSearchTextLower);
+            }
+          }
+
+          if (!currentCriterionMet) {
+            allCriteriaForThisTriggerMet = false;
             break; 
           }
         }
-        if (allCriteriaMet) {
+
+        if (allCriteriaForThisTriggerMet) {
           status = "найден";
-          triggeredBy = trigger.name;
-          break; // First trigger that matches is enough
+          triggeredByName = trigger.name;
+          break; 
         }
       }
-      return { ...payment, __trigger_status__: status, __triggered_by__: triggeredBy };
+      return { ...payment, __trigger_status__: status, __triggered_by__: triggeredByName };
     });
     setProcessedPayments(updatedPayments);
     setIsProcessing(false);
@@ -204,7 +241,6 @@ export default function PaymentTriggerCheck() {
       toast({ title: "Нет данных для экспорта", variant: "destructive" });
       return;
     }
-    // Prepare data for export: map to original structure + new columns
     const dataToExport = processedPayments.map(p => {
         const { __trigger_status__, __triggered_by__, __original_index__, ...originalData } = p;
         return {
@@ -213,7 +249,6 @@ export default function PaymentTriggerCheck() {
             "Сработавший Триггер": __triggered_by__ || "",
         };
     });
-
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
@@ -261,6 +296,7 @@ export default function PaymentTriggerCheck() {
           </CardTitle>
           <CardDescription>
             Создайте или отредактируйте триггеры для проверки. Триггер сработает, если ВСЕ его критерии будут найдены в одной строке платежа.
+            Для колонок с назначением платежа (например, "Назначение платежа", "Описание операции"), поиск слов из критерия будет происходить по каждому слову в отдельности (логика ИЛИ).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -436,3 +472,4 @@ export default function PaymentTriggerCheck() {
     </div>
   );
 }
+
