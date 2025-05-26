@@ -179,7 +179,7 @@ export default function BrainstormBacklogCreator() {
     const headers = ["ID", "Название фичи", "Описание", "User Story", "Impact", "Confidence", "Ease", "ICE Score"];
     const rows = fields.map(item => [
       item.id,
-      `"${item.featureName.replace(/"/g, '""')}"`, // Escape double quotes
+      `"${(item.featureName || '').replace(/"/g, '""')}"`, // Ensure string and escape double quotes
       `"${(item.description || '').replace(/"/g, '""')}"`,
       `"${(item.userStory || '').replace(/"/g, '""')}"`,
       item.impact,
@@ -188,13 +188,15 @@ export default function BrainstormBacklogCreator() {
       item.iceScore
     ]);
 
-    let csvContent = "data:text/csv;charset=utf-8,"
-      + headers.join(",") + "\n"
-      + rows.map(e => e.join(",")).join("\n");
+    const csvDataString = headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+    
+    // Add UTF-8 BOM
+    const bom = "\uFEFF";
+    const csvContent = bom + csvDataString;
 
-    const encodedUri = encodeURI(csvContent);
+    const encodedUri = encodeURIComponent(csvContent);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", "data:text/csv;charset=utf-8," + encodedUri);
     link.setAttribute("download", `бэклог_${file?.name.split('.')[0] || 'export'}.csv`);
     document.body.appendChild(link);
     link.click();
@@ -394,3 +396,4 @@ export default function BrainstormBacklogCreator() {
     </div>
   );
 }
+
