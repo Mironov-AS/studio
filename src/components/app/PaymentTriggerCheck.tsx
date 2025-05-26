@@ -23,6 +23,7 @@ interface PaymentRecord {
   [key: string]: any; 
   __trigger_status__?: string; 
   __triggered_by__?: string; 
+  __matched_keywords__?: string[]; // Store matched keywords
   __original_index__?: number; 
 }
 
@@ -153,14 +154,15 @@ export default function PaymentTriggerCheck() {
     const updatedPayments = rawPayments.map(payment => {
       let status = "не найден";
       let triggeredByName = "";
+      let matchedKeywordsForRow: string[] = [];
       
       for (const trigger of triggers) {
-        const searchKeywords = trigger.searchText.toLowerCase().split(/\s+/).filter(word => word.length > 0);
+        const searchKeywords = trigger.searchText.toLowerCase().split(/\s+/).filter(Boolean);
         if (searchKeywords.length === 0) continue; 
 
         let triggerMatchedInRow = false;
+        let currentTriggerMatchedKeywords: string[] = [];
 
-        // Search across all columns
         for (const header of headers) { 
             const cellValue = String(payment[header] ?? '').toLowerCase();
             if (!cellValue) continue;
@@ -168,20 +170,21 @@ export default function PaymentTriggerCheck() {
             for (const keyword of searchKeywords) {
                 if (cellValue.includes(keyword)) {
                     triggerMatchedInRow = true;
-                    break; 
+                    if (!currentTriggerMatchedKeywords.includes(keyword)) {
+                        currentTriggerMatchedKeywords.push(keyword);
+                    }
                 }
             }
-            if (triggerMatchedInRow) break; 
         }
         
-
         if (triggerMatchedInRow) {
             status = "найден";
             triggeredByName = trigger.name;
+            matchedKeywordsForRow = currentTriggerMatchedKeywords; // Store keywords for the first matched trigger
             break; 
         }
       }
-      return { ...payment, __trigger_status__: status, __triggered_by__: triggeredByName };
+      return { ...payment, __trigger_status__: status, __triggered_by__: triggeredByName, __matched_keywords__: matchedKeywordsForRow };
     });
     setProcessedPayments(updatedPayments);
     setIsProcessing(false);
@@ -195,11 +198,12 @@ export default function PaymentTriggerCheck() {
       return;
     }
     const dataToExport = (processedPayments.length > 0 ? processedPayments : rawPayments).map(p => {
-        const { __trigger_status__, __triggered_by__, __original_index__, ...originalData } = p;
+        const { __trigger_status__, __triggered_by__, __matched_keywords__, __original_index__, ...originalData } = p;
         return {
             ...originalData,
             "Статус Триггера": __trigger_status__ || (processedPayments.length > 0 ? "не найден" : ""),
             "Сработавший Триггер": __triggered_by__ || (processedPayments.length > 0 ? "" : ""),
+            "Ключевые слова триггера": (__matched_keywords__ && __matched_keywords__.length > 0) ? __matched_keywords__.join(', ') : (processedPayments.length > 0 ? "" : ""),
         };
     });
 
@@ -210,7 +214,11 @@ export default function PaymentTriggerCheck() {
     toast({ title: "Файл экспортирован" });
   };
 
-  const displayHeaders = headers.length > 0 ? (processedPayments.length > 0 ? [...headers, "Статус Триггера", "Сработавший Триггер"] : headers) : [];
+  const displayHeaders = headers.length > 0 
+    ? (processedPayments.length > 0 
+        ? [...headers, "Статус Триггера", "Сработавший Триггер", "Ключевые слова триггера"] 
+        : headers) 
+    : [];
   const paymentsToDisplay = processedPayments.length > 0 ? processedPayments : rawPayments;
 
 
@@ -330,7 +338,7 @@ export default function PaymentTriggerCheck() {
             </CardTitle>
             <CardDescription>
               Таблица с исходными данными и результатами проверки триггеров.
-              {processedPayments.length > 0 && 'Новые столбцы: "Статус Триггера" и "Сработавший Триггер".'}
+              {processedPayments.length > 0 && 'Новые столбцы: "Статус Триггера", "Сработавший Триггер" и "Ключевые слова триггера".'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -358,6 +366,7 @@ export default function PaymentTriggerCheck() {
                                 </span>
                             </TableCell>
                             <TableCell>{payment.__triggered_by__ || ""}</TableCell>
+                            <TableCell>{(payment.__matched_keywords__ && payment.__matched_keywords__.length > 0) ? payment.__matched_keywords__.join(', ') : ""}</TableCell>
                         </>
                       )}
                     </TableRow>
