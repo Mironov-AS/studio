@@ -15,4 +15,5 @@ import '@/ai/flows/generate-leasing-proposal-flow.ts';
 import '@/ai/flows/generate-innovation-action-plan-flow.ts';
 import '@/ai/flows/verify-ddu-flow.ts';
 import '@/ai/flows/chat-with-document-flow.ts';
+import '@/ai/flows/generate-backlog-from-brainstorm-flow.ts';
 
