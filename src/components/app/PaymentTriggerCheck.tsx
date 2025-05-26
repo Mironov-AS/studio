@@ -14,45 +14,30 @@ import { Loader2, FileUp, Sparkles, ListChecks, PlusCircle, Trash2, Edit3, Downl
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { nanoid } from 'nanoid'; // For unique IDs
+import { nanoid } from 'nanoid'; 
 import { cn } from "@/lib/utils";
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".xlsx,.xls";
 
 interface PaymentRecord {
-  [key: string]: any; // Allows any properties from Excel
-  __trigger_status__?: string; // "найден" | "не найден"
-  __triggered_by__?: string; // Name of the trigger
-  __original_index__?: number; // To maintain order
+  [key: string]: any; 
+  __trigger_status__?: string; 
+  __triggered_by__?: string; 
+  __original_index__?: number; 
 }
 
 interface Trigger {
   id: string;
   name: string;
-  searchText: string; // Contains one or more keywords, space-separated
+  searchText: string; 
 }
 
-// Expanded list of common headers for "purpose of payment" columns
 const COMMON_PURPOSE_COLUMN_NAMES = [
-  "назначение платежа",
-  "описание операции",
-  "детали платежа",
-  "комментарий",
-  "наименование операции",
-  "основание платежа",
-  "примечание",
-  "payment purpose",
-  "purpose",
-  "description",
-  "назначение",
-  "описание",
-  "примечания",
-  "информация о платеже",
-  "содержание операции",
-  "текст назначения",
-  "комментарии к платежу",
-  "детализация",
-  "расшифровка платежа"
+  "назначение платежа", "описание операции", "детали платежа", "комментарий",
+  "наименование операции", "основание платежа", "примечание", "payment purpose",
+  "purpose", "description", "назначение", "описание", "примечания",
+  "информация о платеже", "содержание операции", "текст назначения",
+  "комментарии к платежу", "детализация", "расшифровка платежа"
 ];
 
 export default function PaymentTriggerCheck() {
@@ -69,7 +54,7 @@ export default function PaymentTriggerCheck() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [fileError, setFileError] = useState<string | null>(null);
+  const [fileLoadMessage, setFileLoadMessage] = useState<string | null>(null);
   const { toast } = useToast();
 
   const findPurposeColumn = (currentHeaders: string[]): string | null => {
@@ -77,7 +62,7 @@ export default function PaymentTriggerCheck() {
     for (const header of currentHeaders) {
       const normalizedHeader = header.toLowerCase().trim();
       if (normalizedCommonNames.includes(normalizedHeader)) {
-        return header; // Return the original header name for use as a key
+        return header;
       }
     }
     return null;
@@ -88,7 +73,7 @@ export default function PaymentTriggerCheck() {
     if (!file) return;
 
     setIsLoading(true);
-    setFileError(null);
+    setFileLoadMessage(null);
     setRawPayments([]);
     setProcessedPayments([]);
     setHeaders([]);
@@ -105,7 +90,7 @@ export default function PaymentTriggerCheck() {
         const jsonPayments: PaymentRecord[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
         
         if (jsonPayments.length === 0) {
-          setFileError("Файл пуст или не удалось прочитать данные.");
+          setFileLoadMessage("Файл пуст или не удалось прочитать данные.");
           toast({ title: "Ошибка файла", description: "Файл пуст или не удалось прочитать данные.", variant: "destructive" });
           setIsLoading(false);
           return;
@@ -116,33 +101,33 @@ export default function PaymentTriggerCheck() {
         const foundPurposeColumn = findPurposeColumn(paymentHeaders);
         setPurposeColumnName(foundPurposeColumn);
 
-        if (!foundPurposeColumn) {
-            const errorMsg = "Не удалось автоматически определить колонку 'Назначение платежа'. Проверьте, что в файле есть колонка с одним из стандартных названий (например, 'Назначение платежа', 'Описание операции', 'Детали платежа') и попробуйте снова.";
-            setFileError(errorMsg);
-            toast({ 
-                title: "Ошибка определения колонки", 
-                description: errorMsg, 
-                variant: "destructive", 
-                duration: 10000 
-            });
+        let loadMsg = `Файл "${file.name}" (${jsonPayments.length} строк) успешно загружен. `;
+        if (foundPurposeColumn) {
+            loadMsg += `Колонка для основного поиска триггеров: "${foundPurposeColumn}".`;
+            setFileLoadMessage(loadMsg);
+            toast({ title: "Файл загружен", description: loadMsg });
         } else {
+            loadMsg += "Колонка 'Назначение платежа' не найдена автоматически. Поиск триггеров будет осуществляться по всем колонкам.";
+            setFileLoadMessage(loadMsg);
             toast({ 
-                title: "Файл успешно загружен", 
-                description: `${jsonPayments.length} записей найдено. Колонка для поиска триггеров: "${foundPurposeColumn}".` 
+                title: "Файл загружен (Внимание)", 
+                description: loadMsg, 
+                variant: "default", // Changed from destructive to default as it's an informational warning
+                duration: 7000 
             });
         }
         setRawPayments(jsonPayments.map((p, index) => ({ ...p, __original_index__: index })));
 
       } catch (error) {
         console.error("Error parsing Excel file:", error);
-        setFileError("Ошибка при чтении или парсинге файла Excel. Убедитесь, что файл корректен.");
+        setFileLoadMessage("Ошибка при чтении или парсинге файла Excel. Убедитесь, что файл корректен.");
         toast({ title: "Ошибка парсинга файла", description: "Не удалось обработать файл Excel.", variant: "destructive" });
       } finally {
         setIsLoading(false);
       }
     };
     reader.onerror = () => {
-      setFileError("Не удалось прочитать файл.");
+      setFileLoadMessage("Не удалось прочитать файл.");
       toast({ title: "Ошибка чтения файла", variant: "destructive" });
       setIsLoading(false);
     };
@@ -192,46 +177,59 @@ export default function PaymentTriggerCheck() {
       toast({ title: "Нет данных", description: "Сначала загрузите реестр платежей.", variant: "destructive" });
       return;
     }
-    if (!purposeColumnName) {
-      toast({ title: "Ошибка", description: "Колонка 'Назначение платежа' не определена. Проверьте заголовки в вашем файле или убедитесь, что он содержит колонку с одним из стандартных названий (например, 'Назначение платежа', 'Описание операции'). Невозможно провести проверку.", variant: "destructive", duration: 10000 });
-      return;
-    }
     if (triggers.length === 0) {
         toast({ title: "Нет триггеров", description: "Добавьте хотя бы один триггер для проверки.", variant: "destructive" });
         return;
     }
 
-
     setIsProcessing(true);
+    const searchInSpecificColumn = !!purposeColumnName;
+
     const updatedPayments = rawPayments.map(payment => {
       let status = "не найден";
       let triggeredByName = "";
-      const purposeText = String(payment[purposeColumnName] === null || payment[purposeColumnName] === undefined ? "" : payment[purposeColumnName]).toLowerCase();
-
+      
       for (const trigger of triggers) {
         const searchKeywords = trigger.searchText.toLowerCase().split(/\s+/).filter(word => word.length > 0);
         if (searchKeywords.length === 0) continue; 
 
-        let triggerMatched = false;
-        for (const keyword of searchKeywords) {
-          if (purposeText.includes(keyword)) {
-            triggerMatched = true;
-            break; 
-          }
+        let triggerMatchedInRow = false;
+
+        if (searchInSpecificColumn && purposeColumnName) {
+            const purposeText = String(payment[purposeColumnName] ?? '').toLowerCase();
+            for (const keyword of searchKeywords) {
+                if (purposeText.includes(keyword)) {
+                    triggerMatchedInRow = true;
+                    break;
+                }
+            }
+        } else { // Search across all columns
+            for (const header of headers) { 
+                const cellValue = String(payment[header] ?? '').toLowerCase();
+                if (!cellValue) continue;
+
+                for (const keyword of searchKeywords) {
+                    if (cellValue.includes(keyword)) {
+                        triggerMatchedInRow = true;
+                        break; 
+                    }
+                }
+                if (triggerMatchedInRow) break; 
+            }
         }
 
-        if (triggerMatched) {
-          status = "найден";
-          triggeredByName = trigger.name;
-          break; 
+        if (triggerMatchedInRow) {
+            status = "найден";
+            triggeredByName = trigger.name;
+            break; 
         }
       }
       return { ...payment, __trigger_status__: status, __triggered_by__: triggeredByName };
     });
     setProcessedPayments(updatedPayments);
     setIsProcessing(false);
-    toast({ title: "Обработка завершена", description: `Реестр проверен на триггеры по колонке "${purposeColumnName}".` });
-  }, [rawPayments, triggers, purposeColumnName, toast]);
+    toast({ title: "Обработка завершена", description: `Реестр проверен на триггеры. ${searchInSpecificColumn ? `Поиск в колонке "${purposeColumnName}".` : "Поиск по всем колонкам."}` });
+  }, [rawPayments, triggers, purposeColumnName, headers, toast]);
 
 
   const downloadExcel = () => {
@@ -268,7 +266,7 @@ export default function PaymentTriggerCheck() {
             1. Загрузка реестра платежей
           </CardTitle>
           <CardDescription>
-            Загрузите файл Excel (.xlsx, .xls) с реестром платежей. Система автоматически попытается найти колонку с назначением платежа.
+            Загрузите файл Excel (.xlsx, .xls) с реестром платежей. Система автоматически попытается найти колонку с назначением платежа. Если колонка не будет найдена, поиск триггеров будет производиться по всем данным строки.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -281,12 +279,11 @@ export default function PaymentTriggerCheck() {
             disabled={isLoading}
           />
           {isLoading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-primary" />}
-          {fileError && <p className="mt-2 text-sm text-destructive flex items-center gap-1"><AlertTriangle className="h-4 w-4"/> {fileError}</p>}
-          {fileName && !fileError && !isLoading && (
-            <p className="mt-2 text-sm text-muted-foreground">
-                Загружен файл: {fileName} ({rawPayments.length} строк). 
-                {purposeColumnName ? ` Колонка для поиска триггеров: "${purposeColumnName}".` : " Колонка 'Назначение платежа' не найдена автоматически."}
-            </p>
+          {fileLoadMessage && !isLoading && (
+             <p className={cn("mt-2 text-sm", purposeColumnName ? "text-muted-foreground" : "text-orange-600 flex items-center gap-1")}>
+                { !purposeColumnName && <AlertTriangle className="h-4 w-4"/> }
+                {fileLoadMessage}
+             </p>
           )}
         </CardContent>
       </Card>
@@ -298,7 +295,9 @@ export default function PaymentTriggerCheck() {
             2. Управление триггерами
           </CardTitle>
           <CardDescription>
-            Создайте триггеры. Каждый триггер содержит слова/фразы для поиска (через пробел). Поиск будет производиться в автоматически определенной колонке "Назначение платежа". Триггер сработает, если хотя бы одно слово из его поискового текста будет найдено.
+            Создайте триггеры. Каждый триггер содержит слова/фразы для поиска (через пробел). 
+            Поиск будет производиться в автоматически определенной колонке "Назначение платежа" (если найдена) или по всем колонкам.
+            Триггер сработает, если хотя бы одно слово из его поискового текста будет найдено.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -359,7 +358,7 @@ export default function PaymentTriggerCheck() {
 
       <Button 
         onClick={processPayments} 
-        disabled={isLoading || isProcessing || rawPayments.length === 0 || !purposeColumnName || triggers.length === 0} 
+        disabled={isLoading || isProcessing || rawPayments.length === 0 || triggers.length === 0} 
         className="w-full text-lg py-6 rounded-lg"
       >
         {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : <Search className="mr-2 h-6 w-6" />}
@@ -432,13 +431,17 @@ export default function PaymentTriggerCheck() {
                 **Важно:** Обработка файлов Excel происходит в вашем браузере. Для очень больших файлов производительность может снижаться.
             </p>
             <p>
-                **Требования к файлу:** Первый лист Excel должен содержать таблицу с платежами, где первая строка - заголовки столбцов. Одна из колонок должна иметь стандартное наименование для назначения платежа (например, "Назначение платежа", "Описание операции", "Детали платежа" и т.п. — см. полный список в коде).
+                **Требования к файлу:** Первый лист Excel должен содержать таблицу с платежами, где первая строка - заголовки столбцов. 
+                Система попытается найти колонку с одним из стандартных наименований для назначения платежа (например, "Назначение платежа", "Описание операции", "Детали платежа" и т.п.). 
+                Если такая колонка не будет найдена, поиск триггеров будет производиться по всем данным строки.
             </p>
              <p>
-                **Логика работы триггеров:** Триггер срабатывает, если **хотя бы одно** из его поисковых слов (разделенных пробелами в поле "Поисковый текст") найдено в автоматически определенной колонке назначения платежа. Если платеж соответствует нескольким триггерам, будет указан первый сработавший триггер из вашего списка.
+                **Логика работы триггеров:** Триггер срабатывает, если **хотя бы одно** из его поисковых слов (разделенных пробелами в поле "Поисковый текст") найдено.
+                Если специфическая колонка "назначения платежа" определена, поиск ведется только в ней. В противном случае - по всем ячейкам строки.
+                Если платеж соответствует нескольким триггерам, будет указан первый сработавший триггер из вашего списка.
             </p>
             <p>
-                **Ограничение прав доступа и история предупреждений:** Эти функции (роли Администратор, Редактор, Читатель; журнал активности) на данном этапе не реализованы.
+                **Ограничение прав доступа и история предупреждений:** Эти функции на данном этапе не реализованы.
             </p>
         </CardContent>
       </Card>
