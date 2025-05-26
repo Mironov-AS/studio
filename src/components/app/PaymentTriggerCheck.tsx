@@ -26,39 +26,35 @@ interface PaymentRecord {
   __original_index__?: number; // To maintain order
 }
 
-interface TriggerCriterion {
-  id: string;
-  columnHeader: string;
-  searchText: string;
-}
-
 interface Trigger {
   id: string;
   name: string;
-  criteria: TriggerCriterion[];
+  searchText: string; // Contains one or more keywords, space-separated
 }
 
 // List of common headers for "purpose of payment" columns (case-insensitive check will be applied)
-const COMMON_PURPOSE_COLUMN_HEADERS = [
+const COMMON_PURPOSE_COLUMN_NAMES = [
   "назначение платежа",
   "описание операции",
   "детали платежа",
   "комментарий",
   "наименование операции",
   "основание платежа",
-  "примечание"
+  "примечание",
+  "payment purpose",
+  "purpose",
+  "description"
 ];
 
 export default function PaymentTriggerCheck() {
   const [rawPayments, setRawPayments] = useState<PaymentRecord[]>([]);
   const [processedPayments, setProcessedPayments] = useState<PaymentRecord[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
+  const [purposeColumnName, setPurposeColumnName] = useState<string | null>(null);
   
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [currentTriggerName, setCurrentTriggerName] = useState('');
-  const [currentCriteria, setCurrentCriteria] = useState<TriggerCriterion[]>([]);
-  const [currentCriterionColumn, setCurrentCriterionColumn] = useState('');
-  const [currentCriterionSearchText, setCurrentCriterionSearchText] = useState('');
+  const [currentSearchText, setCurrentSearchText] = useState('');
   const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null);
 
   const [fileName, setFileName] = useState<string | null>(null);
@@ -66,6 +62,15 @@ export default function PaymentTriggerCheck() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const findPurposeColumn = (currentHeaders: string[]): string | null => {
+    for (const header of currentHeaders) {
+      if (COMMON_PURPOSE_COLUMN_NAMES.includes(header.toLowerCase().trim())) {
+        return header;
+      }
+    }
+    return null;
+  };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -76,6 +81,7 @@ export default function PaymentTriggerCheck() {
     setRawPayments([]);
     setProcessedPayments([]);
     setHeaders([]);
+    setPurposeColumnName(null);
     setFileName(file.name);
 
     const reader = new FileReader();
@@ -96,8 +102,17 @@ export default function PaymentTriggerCheck() {
         
         const paymentHeaders = Object.keys(jsonPayments[0] || {});
         setHeaders(paymentHeaders);
+        const foundPurposeColumn = findPurposeColumn(paymentHeaders);
+        setPurposeColumnName(foundPurposeColumn);
+
+        if (!foundPurposeColumn) {
+            setFileError("Не удалось автоматически определить колонку 'Назначение платежа'. Проверьте заголовки в файле.");
+            toast({ title: "Ошибка файла", description: "Колонка 'Назначение платежа' не найдена. Проверьте, что она называется стандартно (например, 'Назначение платежа', 'Описание операции').", variant: "destructive", duration: 7000 });
+        } else {
+            toast({ title: "Файл успешно загружен", description: `${jsonPayments.length} записей найдено. Колонка для поиска: "${foundPurposeColumn}".` });
+        }
         setRawPayments(jsonPayments.map((p, index) => ({ ...p, __original_index__: index })));
-        toast({ title: "Файл успешно загружен", description: `${jsonPayments.length} записей найдено.` });
+
       } catch (error) {
         console.error("Error parsing Excel file:", error);
         setFileError("Ошибка при чтении или парсинге файла Excel. Убедитесь, что файл корректен.");
@@ -114,54 +129,37 @@ export default function PaymentTriggerCheck() {
     reader.readAsBinaryString(file);
   };
 
-  const handleAddCriterion = () => {
-    if (!currentCriterionColumn || !currentCriterionSearchText.trim()) {
-      toast({ title: "Ошибка", description: "Выберите столбец и введите текст для поиска.", variant: "destructive" });
-      return;
-    }
-    setCurrentCriteria([
-      ...currentCriteria,
-      { id: nanoid(), columnHeader: currentCriterionColumn, searchText: currentCriterionSearchText.trim() }
-    ]);
-    setCurrentCriterionColumn(headers[0] || ''); // Reset to first header or empty
-    setCurrentCriterionSearchText('');
-  };
-
-  const handleRemoveCriterion = (id: string) => {
-    setCurrentCriteria(currentCriteria.filter(c => c.id !== id));
-  };
-
   const handleSaveTrigger = () => {
     if (!currentTriggerName.trim()) {
       toast({ title: "Ошибка", description: "Название триггера не может быть пустым.", variant: "destructive" });
       return;
     }
-    if (currentCriteria.length === 0) {
-      toast({ title: "Ошибка", description: "Добавьте хотя бы один критерий для триггера.", variant: "destructive" });
+    if (!currentSearchText.trim()) {
+      toast({ title: "Ошибка", description: "Поисковый текст триггера не может быть пустым.", variant: "destructive" });
       return;
     }
 
     if (editingTrigger) {
-      setTriggers(triggers.map(t => t.id === editingTrigger.id ? { ...editingTrigger, name: currentTriggerName.trim(), criteria: currentCriteria } : t));
+      setTriggers(triggers.map(t => t.id === editingTrigger.id ? { ...editingTrigger, name: currentTriggerName.trim(), searchText: currentSearchText.trim() } : t));
       setEditingTrigger(null);
     } else {
-      setTriggers([...triggers, { id: nanoid(), name: currentTriggerName.trim(), criteria: currentCriteria }]);
+      setTriggers([...triggers, { id: nanoid(), name: currentTriggerName.trim(), searchText: currentSearchText.trim() }]);
     }
     setCurrentTriggerName('');
-    setCurrentCriteria([]);
+    setCurrentSearchText('');
     toast({ title: "Триггер сохранен" });
   };
 
   const handleEditTrigger = (trigger: Trigger) => {
     setEditingTrigger(trigger);
     setCurrentTriggerName(trigger.name);
-    setCurrentCriteria([...trigger.criteria]); 
+    setCurrentSearchText(trigger.searchText);
   };
   
   const handleCancelEditTrigger = () => {
     setEditingTrigger(null);
     setCurrentTriggerName('');
-    setCurrentCriteria([]);
+    setCurrentSearchText('');
   }
 
   const handleRemoveTrigger = (id: string) => {
@@ -174,55 +172,35 @@ export default function PaymentTriggerCheck() {
       toast({ title: "Нет данных", description: "Сначала загрузите реестр платежей.", variant: "destructive" });
       return;
     }
+    if (!purposeColumnName) {
+      toast({ title: "Ошибка", description: "Колонка 'Назначение платежа' не определена. Невозможно провести проверку.", variant: "destructive" });
+      return;
+    }
+    if (triggers.length === 0) {
+        toast({ title: "Нет триггеров", description: "Добавьте хотя бы один триггер для проверки.", variant: "destructive" });
+        return;
+    }
+
 
     setIsProcessing(true);
     const updatedPayments = rawPayments.map(payment => {
       let status = "не найден";
       let triggeredByName = "";
+      const purposeText = String(payment[purposeColumnName] === null || payment[purposeColumnName] === undefined ? "" : payment[purposeColumnName]).toLowerCase();
 
       for (const trigger of triggers) {
-        let allCriteriaForThisTriggerMet = trigger.criteria.length > 0; // A trigger must have criteria to fire
-        if (trigger.criteria.length === 0) continue; // Skip triggers without criteria
+        const searchKeywords = trigger.searchText.toLowerCase().split(/\s+/).filter(word => word.length > 0);
+        if (searchKeywords.length === 0) continue; // Skip trigger if search text is empty after splitting
 
-        for (const criterion of trigger.criteria) {
-          const cellValue = payment[criterion.columnHeader];
-          const cellValueString = String(cellValue === null || cellValue === undefined ? "" : cellValue).toLowerCase();
-          const criterionSearchTextLower = criterion.searchText.toLowerCase();
-          
-          let currentCriterionMet = false;
-          const columnHeaderLower = criterion.columnHeader.toLowerCase();
-
-          if (COMMON_PURPOSE_COLUMN_HEADERS.includes(columnHeaderLower)) {
-            // Word-by-word OR logic for "purpose of payment" columns
-            const searchWords = criterionSearchTextLower.split(/\s+/).filter(word => word.length > 0);
-            if (searchWords.length > 0) {
-              for (const word of searchWords) {
-                if (cellValueString.includes(word)) {
-                  currentCriterionMet = true;
-                  break;
-                }
-              }
-            } else if (criterionSearchTextLower === "" && cellValueString === "") { 
-              // Empty search text could match empty cell, but generally criteria should have text.
-              // This case is unlikely due to UI validation for criterion.searchText.
-              currentCriterionMet = true;
-            }
-          } else {
-            // Full phrase substring match for other columns
-            if (criterionSearchTextLower === "" && cellValueString === "") {
-                currentCriterionMet = true;
-            } else if (criterionSearchTextLower !== "") {
-                 currentCriterionMet = cellValueString.includes(criterionSearchTextLower);
-            }
-          }
-
-          if (!currentCriterionMet) {
-            allCriteriaForThisTriggerMet = false;
+        let triggerMatched = false;
+        for (const keyword of searchKeywords) {
+          if (purposeText.includes(keyword)) {
+            triggerMatched = true;
             break; 
           }
         }
 
-        if (allCriteriaForThisTriggerMet) {
+        if (triggerMatched) {
           status = "найден";
           triggeredByName = trigger.name;
           break; 
@@ -232,8 +210,8 @@ export default function PaymentTriggerCheck() {
     });
     setProcessedPayments(updatedPayments);
     setIsProcessing(false);
-    toast({ title: "Обработка завершена", description: "Реестр проверен на триггеры." });
-  }, [rawPayments, triggers, toast]);
+    toast({ title: "Обработка завершена", description: `Реестр проверен на триггеры по колонке "${purposeColumnName}".` });
+  }, [rawPayments, triggers, purposeColumnName, toast]);
 
 
   const downloadExcel = () => {
@@ -270,7 +248,7 @@ export default function PaymentTriggerCheck() {
             1. Загрузка реестра платежей
           </CardTitle>
           <CardDescription>
-            Загрузите файл Excel (.xlsx, .xls) с реестром платежей.
+            Загрузите файл Excel (.xlsx, .xls) с реестром платежей. Система автоматически попытается найти колонку с назначением платежа.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -284,7 +262,12 @@ export default function PaymentTriggerCheck() {
           />
           {isLoading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-primary" />}
           {fileError && <p className="mt-2 text-sm text-destructive flex items-center gap-1"><AlertTriangle className="h-4 w-4"/> {fileError}</p>}
-          {fileName && !fileError && !isLoading && <p className="mt-2 text-sm text-muted-foreground">Загружен файл: {fileName} ({rawPayments.length} строк)</p>}
+          {fileName && !fileError && !isLoading && (
+            <p className="mt-2 text-sm text-muted-foreground">
+                Загружен файл: {fileName} ({rawPayments.length} строк). 
+                {purposeColumnName ? ` Колонка для поиска: "${purposeColumnName}".` : " Колонка 'Назначение платежа' не найдена автоматически."}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -295,8 +278,7 @@ export default function PaymentTriggerCheck() {
             2. Управление триггерами
           </CardTitle>
           <CardDescription>
-            Создайте или отредактируйте триггеры для проверки. Триггер сработает, если ВСЕ его критерии будут найдены в одной строке платежа.
-            Для колонок с назначением платежа (например, "Назначение платежа", "Описание операции"), поиск слов из критерия будет происходить по каждому слову в отдельности (логика ИЛИ).
+            Создайте триггеры. Каждый триггер содержит слова/фразы для поиска (через пробел). Поиск будет производиться в колонке "Назначение платежа". Триггер сработает, если хотя бы одно слово из его поискового текста будет найдено.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -304,50 +286,16 @@ export default function PaymentTriggerCheck() {
                 <h3 className="text-lg font-semibold mb-2">{editingTrigger ? "Редактирование триггера" : "Новый триггер"}</h3>
                 <div className="space-y-3">
                     <Input 
-                        placeholder="Название триггера (например, 'Платеж на большую сумму')"
+                        placeholder="Название триггера (например, 'Высокий риск')"
                         value={currentTriggerName}
                         onChange={(e) => setCurrentTriggerName(e.target.value)}
                     />
-                    <Label className="text-sm">Критерии для триггера (текст будет искаться без учета регистра):</Label>
-                    <div className="pl-4 border-l-2 border-primary space-y-2">
-                        {currentCriteria.map(crit => (
-                            <div key={crit.id} className="flex items-center gap-2 p-2 bg-card rounded text-sm">
-                                <span className="font-medium">{crit.columnHeader}:</span>
-                                <span>"{crit.searchText}"</span>
-                                <Button variant="ghost" size="icon" onClick={() => handleRemoveCriterion(crit.id)} className="ml-auto h-6 w-6">
-                                    <Trash2 className="h-4 w-4 text-destructive"/>
-                                </Button>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="flex items-end gap-2">
-                        <div className="flex-grow">
-                            <Label htmlFor="criterion-column" className="text-xs">Столбец для поиска</Label>
-                            <select 
-                                id="criterion-column"
-                                value={currentCriterionColumn}
-                                onChange={(e) => setCurrentCriterionColumn(e.target.value)}
-                                className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                disabled={headers.length === 0}
-                            >
-                                <option value="" disabled>{headers.length > 0 ? "Выберите столбец" : "Загрузите файл для выбора столбцов"}</option>
-                                {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                            </select>
-                        </div>
-                        <div className="flex-grow">
-                            <Label htmlFor="criterion-text" className="text-xs">Текст для поиска</Label>
-                            <Input 
-                                id="criterion-text"
-                                placeholder="Фраза или слово"
-                                value={currentCriterionSearchText}
-                                onChange={(e) => setCurrentCriterionSearchText(e.target.value)}
-                                className="mt-1"
-                            />
-                        </div>
-                        <Button onClick={handleAddCriterion} variant="outline" size="icon" title="Добавить критерий">
-                            <PlusCircle className="h-5 w-5"/>
-                        </Button>
-                    </div>
+                    <Textarea 
+                        placeholder="Слова/фразы для поиска через пробел (например, 'срочно займ возврат')"
+                        value={currentSearchText}
+                        onChange={(e) => setCurrentSearchText(e.target.value)}
+                        rows={2}
+                    />
                     <div className="flex gap-2 pt-2">
                         <Button onClick={handleSaveTrigger}>
                             {editingTrigger ? "Сохранить изменения" : "Добавить триггер"}
@@ -368,9 +316,7 @@ export default function PaymentTriggerCheck() {
                                     <div className="flex justify-between items-start">
                                     <div>
                                         <h4 className="font-semibold text-md">{trigger.name}</h4>
-                                        <ul className="list-disc list-inside pl-2 text-xs text-muted-foreground">
-                                        {trigger.criteria.map(c => <li key={c.id}><b>{c.columnHeader}:</b> "{c.searchText}"</li>)}
-                                        </ul>
+                                        <p className="text-xs text-muted-foreground">Поисковый текст: "{trigger.searchText}"</p>
                                     </div>
                                     <div className="flex gap-1">
                                         <Button variant="ghost" size="icon" onClick={() => handleEditTrigger(trigger)} className="h-7 w-7" title="Редактировать">
@@ -393,7 +339,7 @@ export default function PaymentTriggerCheck() {
 
       <Button 
         onClick={processPayments} 
-        disabled={isLoading || isProcessing || rawPayments.length === 0} 
+        disabled={isLoading || isProcessing || rawPayments.length === 0 || !purposeColumnName || triggers.length === 0} 
         className="w-full text-lg py-6 rounded-lg"
       >
         {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : <Search className="mr-2 h-6 w-6" />}
@@ -443,9 +389,9 @@ export default function PaymentTriggerCheck() {
             </ScrollArea>
           </CardContent>
           <CardFooter>
-            <Button onClick={downloadExcel} disabled={processedPayments.length === 0} className="w-full">
+            <Button onClick={downloadExcel} disabled={processedPayments.length === 0 && rawPayments.length === 0} className="w-full">
               <Download className="mr-2 h-5 w-5" />
-              Скачать обработанный Excel
+              Скачать {processedPayments.length > 0 ? "обработанный" : "исходный"} Excel
             </Button>
           </CardFooter>
         </Card>
@@ -454,7 +400,7 @@ export default function PaymentTriggerCheck() {
       <Card className="shadow-xl rounded-xl opacity-70">
         <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl text-muted-foreground">
-                <Info className="h-6 w-6" /> Дополнительная информация и будущие функции
+                <Info className="h-6 w-6" /> Дополнительная информация
             </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
@@ -462,10 +408,13 @@ export default function PaymentTriggerCheck() {
                 **Важно:** Обработка файлов Excel происходит в вашем браузере. Для очень больших файлов производительность может снижаться.
             </p>
             <p>
-                **Требования к файлу:** Первый лист Excel должен содержать таблицу с платежами, где первая строка - заголовки столбцов.
+                **Требования к файлу:** Первый лист Excel должен содержать таблицу с платежами, где первая строка - заголовки столбцов. Один из столбцов должен иметь стандартное наименование для назначения платежа (например, "Назначение платежа", "Описание операции", "Детали платежа" и т.п.).
+            </p>
+             <p>
+                **Логика работы триггеров:** Триггер срабатывает, если **хотя бы одно** из его поисковых слов найдено в колонке назначения платежа. Если платеж соответствует нескольким триггерам, будет указан первый сработавший триггер из вашего списка.
             </p>
             <p>
-                **Ограничение прав доступа и история предупреждений:** Эти функции (роли Администратор, Редактор, Читатель; журнал активности) являются более сложными и требуют значительной серверной инфраструктуры. На данном этапе они не реализованы.
+                **Ограничение прав доступа и история предупреждений:** Эти функции (роли Администратор, Редактор, Читатель; журнал активности) на данном этапе не реализованы.
             </p>
         </CardContent>
       </Card>
