@@ -39,18 +39,19 @@ const defaultTriggers: Trigger[] = [
   { id: nanoid(), name: "Доли", searchText: "доли, долей" },
   { id: nanoid(), name: "Вложение", searchText: "вложение, вложения" },
   { id: nanoid(), name: "Займ", searchText: "займ" },
-  { id: nanoid(), name: "Задолженность", searchText: "задолженность" },
+  { id: nanoid(), name: "Задолженность", searchText: "задолженность" }, // Будет искать "задолж", "задолженность" и т.д.
   { id: nanoid(), name: "Долг", searchText: "долг" },
   { id: nanoid(), name: "Возврат", searchText: "возврат" },
   { id: nanoid(), name: "Предоставление", searchText: "предоставление" },
   { id: nanoid(), name: "Приобретение", searchText: "приобретение" },
   { id: nanoid(), name: "Погашение", searchText: "погашение" },
-  { id: nanoid(), name: "Договор купли-продажи", searchText: "договор купли продажи, дкп" },
+  { id: nanoid(), name: "ДКП (аббревиатура)", searchText: "дкп" },
+  { id: nanoid(), name: "Договор купли-продажи (фраза)", searchText: "договор купли продажи" },
   { id: nanoid(), name: "Земельный участок", searchText: "земельный участок" },
   { id: nanoid(), name: "Имущество", searchText: "имущество" },
-  { id: nanoid(), name: "Недвижимость", searchText: "недвиж, недвижимость" },
+  { id: nanoid(), name: "Недвижимость (и сокр.)", searchText: "недвиж, недвижимость" },
   { id: nanoid(), name: "Ценные бумаги", searchText: "ценные бумаги" },
-  { id: nanoid(), name: "Вексель", searchText: "вексел, вексель" },
+  { id: nanoid(), name: "Вексель (и сокр.)", searchText: "вексел, вексель" },
   { id: nanoid(), name: "Акции", searchText: "акции" },
 ];
 
@@ -99,7 +100,6 @@ export default function PaymentTriggerCheck() {
 
         const paymentHeaders = Object.keys(jsonPayments[0] || {});
         setHeaders(paymentHeaders);
-
         const loadMsg = `Файл "${file.name}" (${jsonPayments.length} строк) успешно загружен. Поиск триггеров будет осуществляться по всем колонкам.`;
         setFileLoadMessage(loadMsg);
         toast({ title: "Файл загружен", description: loadMsg });
@@ -181,32 +181,52 @@ export default function PaymentTriggerCheck() {
         const searchTerms = trigger.searchText
           .split(',')
           .map(term => term.trim().toLowerCase())
-          .filter(Boolean); // Remove empty strings that might result from splitting
+          .filter(Boolean);
 
         if (searchTerms.length === 0) continue;
 
-        let triggerMatched = false;
-        let currentTriggerMatchedTerms: string[] = [];
+        let isThisTriggerMatchedInRow = false;
+        let currentTriggerMatchedTermsForThisPaymentRow: string[] = [];
 
-        for (const header of headers) {
-          const cellValue = String(payment[header] ?? '').toLowerCase();
-          if (!cellValue) continue;
+        for (const searchTerm of searchTerms) { //searchTerm - это слово или фраза из поля searchText триггера
+          let searchTermFoundInAnyCell = false;
+          for (const header of headers) {
+            const cellValue = String(payment[header] ?? '').toLowerCase();
+            if (!cellValue) continue;
 
-          for (const term of searchTerms) {
-            if (cellValue.includes(term)) {
-              triggerMatched = true;
-              if (!currentTriggerMatchedTerms.includes(term)) {
-                 currentTriggerMatchedTerms.push(term);
+            // Если поисковый термин - одно слово, применяем логику сокращений
+            if (!searchTerm.includes(" ")) { // Одиночное слово
+              const cellWords = cellValue.split(/\s+/).filter(Boolean);
+              for (const cellWord of cellWords) {
+                if (cellWord.startsWith(searchTerm) || searchTerm.startsWith(cellWord)) {
+                  searchTermFoundInAnyCell = true;
+                  if (!currentTriggerMatchedTermsForThisPaymentRow.includes(searchTerm)) {
+                    currentTriggerMatchedTermsForThisPaymentRow.push(searchTerm);
+                  }
+                  break; // Нашли это слово в текущей ячейке
+                }
+              }
+            } else { // Поисковый термин - фраза
+              if (cellValue.includes(searchTerm)) {
+                searchTermFoundInAnyCell = true;
+                if (!currentTriggerMatchedTermsForThisPaymentRow.includes(searchTerm)) {
+                  currentTriggerMatchedTermsForThisPaymentRow.push(searchTerm);
+                }
               }
             }
+            if (searchTermFoundInAnyCell) break; // Этот searchTerm найден в одной из ячеек, переходим к следующему searchTerm (если есть)
+          }
+          if (searchTermFoundInAnyCell) {
+             isThisTriggerMatchedInRow = true; // Хотя бы один поисковый термин триггера найден
           }
         }
         
-        if (triggerMatched) {
+        // Если хотя бы один из поисковых терминов триггера был найден в строке
+        if (isThisTriggerMatchedInRow && currentTriggerMatchedTermsForThisPaymentRow.length > 0) {
           status = "найден";
           triggeredByName = trigger.name;
-          matchedKeywordsForRow = currentTriggerMatchedTerms;
-          break; 
+          matchedKeywordsForRow = [...new Set(currentTriggerMatchedTermsForThisPaymentRow)]; // Сохраняем все сработавшие термины этого триггера
+          break; // Первый сработавший триггер определяет статус строки
         }
       }
       return { ...payment, __trigger_status__: status, __triggered_by__: triggeredByName, __matched_keywords__: matchedKeywordsForRow };
@@ -240,7 +260,7 @@ export default function PaymentTriggerCheck() {
   };
 
   const displayHeaders = headers.length > 0
-    ? (processedPayments.length > 0 || rawPayments.length > 0 // Show additional headers if there's data to display
+    ? (processedPayments.length > 0 || rawPayments.length > 0
       ? [...headers, "Статус Триггера", "Сработавший Триггер", "Ключевые слова/фразы триггера"]
       : headers)
     : [];
@@ -285,7 +305,8 @@ export default function PaymentTriggerCheck() {
           </CardTitle>
           <CardDescription>
             Создайте или отредактируйте триггеры. Каждый триггер содержит имя и поисковый текст (слова или фразы через запятую).
-            Поиск будет осуществляться по всем колонкам. Триггер сработает, если хотя бы одна из его поисковых фраз будет найдена.
+            Поиск будет осуществляться по всем колонкам. Триггер сработает, если хотя бы одна из его поисковых фраз/слов будет найдена.
+            Для одиночных слов также проверяются их сокращения (например, триггер 'задолженность' найдет 'задолж.' в тексте, и наоборот).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -298,7 +319,7 @@ export default function PaymentTriggerCheck() {
                 onChange={(e) => setCurrentTriggerName(e.target.value)}
               />
               <Textarea
-                placeholder="Слова/фразы для поиска через ЗАПЯТУЮ (например, 'срочный платеж, возврат по договору 123, особые условия')"
+                placeholder="Слова/фразы для поиска через ЗАПЯТУЮ (например, 'задолженность, договор купли продажи, дкп')"
                 value={currentSearchText}
                 onChange={(e) => setCurrentSearchText(e.target.value)}
                 rows={2}
@@ -384,8 +405,9 @@ export default function PaymentTriggerCheck() {
                               "font-medium px-2 py-0.5 rounded-full text-xs",
                               payment.__trigger_status__ === "найден" && "bg-green-100 text-green-800",
                               payment.__trigger_status__ === "не найден" && "bg-gray-100 text-gray-700",
-                              !payment.__trigger_status__ && processedPayments.length > 0 && "bg-gray-100 text-gray-700"
+                              !payment.__trigger_status__ && processedPayments.length > 0 && "bg-gray-100 text-gray-700" // Для случаев, когда обработка была, но статус не определен
                             )}>
+                              {/* Показываем статус только если была обработка */}
                               {processedPayments.length > 0 ? (payment.__trigger_status__ || "не найден") : ""}
                             </span>
                           </TableCell>
@@ -423,8 +445,9 @@ export default function PaymentTriggerCheck() {
             **Требования к файлу:** Первый лист Excel должен содержать таблицу с платежами, где первая строка - заголовки столбцов.
           </p>
           <p>
-            **Логика работы триггеров:** Триггер срабатывает, если **хотя бы одна** из его поисковых фраз (разделенных запятыми в поле "Поисковый текст") найдена в любой ячейке строки.
-            Если платеж соответствует нескольким триггерам, будет указан первый сработавший триггер из вашего списка.
+            **Логика работы триггеров:** Триггер сработает, если **хотя бы одна** из его поисковых фраз/слов (разделенных запятыми в поле "Поисковый текст") будет найдена в любой ячейке строки.
+            Для одиночных слов также проверяется, не является ли слово в ячейке сокращением слова из триггера (и наоборот). Например, триггер "задолженность" найдет "задолж." в тексте.
+            Для многословных фраз ищется точное вхождение. Если платеж соответствует нескольким триггерам, будет указан первый сработавший триггер из вашего списка.
           </p>
           <p>
             **Ограничение прав доступа и история предупреждений:** Эти функции на данном этапе не реализованы.
