@@ -14,30 +14,30 @@ import { Loader2, FileUp, Sparkles, ListChecks, PlusCircle, Trash2, Edit3, Downl
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { nanoid } from 'nanoid'; 
+import { nanoid } from 'nanoid';
 import { cn } from "@/lib/utils";
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".xlsx,.xls";
 
 interface PaymentRecord {
-  [key: string]: any; 
-  __trigger_status__?: string; 
-  __triggered_by__?: string; 
-  __matched_keywords__?: string[]; // Store matched keywords
-  __original_index__?: number; 
+  [key: string]: any;
+  __trigger_status__?: string;
+  __triggered_by__?: string;
+  __matched_keywords__?: string[];
+  __original_index__?: number;
 }
 
 interface Trigger {
   id: string;
   name: string;
-  searchText: string; 
+  searchText: string;
 }
 
 export default function PaymentTriggerCheck() {
   const [rawPayments, setRawPayments] = useState<PaymentRecord[]>([]);
   const [processedPayments, setProcessedPayments] = useState<PaymentRecord[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
-  
+
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [currentTriggerName, setCurrentTriggerName] = useState('');
   const [currentSearchText, setCurrentSearchText] = useState('');
@@ -68,21 +68,21 @@ export default function PaymentTriggerCheck() {
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         const jsonPayments: PaymentRecord[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-        
+
         if (jsonPayments.length === 0) {
           setFileLoadMessage("Файл пуст или не удалось прочитать данные.");
           toast({ title: "Ошибка файла", description: "Файл пуст или не удалось прочитать данные.", variant: "destructive" });
           setIsLoading(false);
           return;
         }
-        
+
         const paymentHeaders = Object.keys(jsonPayments[0] || {});
         setHeaders(paymentHeaders);
 
         const loadMsg = `Файл "${file.name}" (${jsonPayments.length} строк) успешно загружен. Поиск триггеров будет осуществляться по всем колонкам.`;
         setFileLoadMessage(loadMsg);
         toast({ title: "Файл загружен", description: loadMsg });
-        
+
         setRawPayments(jsonPayments.map((p, index) => ({ ...p, __original_index__: index })));
 
       } catch (error) {
@@ -127,7 +127,7 @@ export default function PaymentTriggerCheck() {
     setCurrentTriggerName(trigger.name);
     setCurrentSearchText(trigger.searchText);
   };
-  
+
   const handleCancelEditTrigger = () => {
     setEditingTrigger(null);
     setCurrentTriggerName('');
@@ -145,8 +145,8 @@ export default function PaymentTriggerCheck() {
       return;
     }
     if (triggers.length === 0) {
-        toast({ title: "Нет триггеров", description: "Добавьте хотя бы один триггер для проверки.", variant: "destructive" });
-        return;
+      toast({ title: "Нет триггеров", description: "Добавьте хотя бы один триггер для проверки.", variant: "destructive" });
+      return;
     }
 
     setIsProcessing(true);
@@ -155,33 +155,38 @@ export default function PaymentTriggerCheck() {
       let status = "не найден";
       let triggeredByName = "";
       let matchedKeywordsForRow: string[] = [];
-      
+
       for (const trigger of triggers) {
-        const searchKeywords = trigger.searchText.toLowerCase().split(/\s+/).filter(Boolean);
-        if (searchKeywords.length === 0) continue; 
+        // Split search text by comma, trim whitespace, convert to lowercase, and filter out empty strings
+        const searchPhrases = trigger.searchText
+          .split(',')
+          .map(phrase => phrase.trim().toLowerCase())
+          .filter(phrase => phrase.length > 0);
+
+        if (searchPhrases.length === 0) continue;
 
         let triggerMatchedInRow = false;
-        let currentTriggerMatchedKeywords: string[] = [];
+        let currentTriggerMatchedPhrases: string[] = [];
 
-        for (const header of headers) { 
-            const cellValue = String(payment[header] ?? '').toLowerCase();
-            if (!cellValue) continue;
+        for (const header of headers) {
+          const cellValue = String(payment[header] ?? '').toLowerCase();
+          if (!cellValue) continue;
 
-            for (const keyword of searchKeywords) {
-                if (cellValue.includes(keyword)) {
-                    triggerMatchedInRow = true;
-                    if (!currentTriggerMatchedKeywords.includes(keyword)) {
-                        currentTriggerMatchedKeywords.push(keyword);
-                    }
-                }
+          for (const phrase of searchPhrases) {
+            if (cellValue.includes(phrase)) {
+              triggerMatchedInRow = true;
+              if (!currentTriggerMatchedPhrases.includes(phrase)) {
+                currentTriggerMatchedPhrases.push(phrase); // Store the exact phrase that matched
+              }
             }
+          }
         }
-        
+
         if (triggerMatchedInRow) {
-            status = "найден";
-            triggeredByName = trigger.name;
-            matchedKeywordsForRow = currentTriggerMatchedKeywords; // Store keywords for the first matched trigger
-            break; 
+          status = "найден";
+          triggeredByName = trigger.name;
+          matchedKeywordsForRow = currentTriggerMatchedPhrases;
+          break; // Stop checking other triggers for this payment if one is found
         }
       }
       return { ...payment, __trigger_status__: status, __triggered_by__: triggeredByName, __matched_keywords__: matchedKeywordsForRow };
@@ -198,13 +203,13 @@ export default function PaymentTriggerCheck() {
       return;
     }
     const dataToExport = (processedPayments.length > 0 ? processedPayments : rawPayments).map(p => {
-        const { __trigger_status__, __triggered_by__, __matched_keywords__, __original_index__, ...originalData } = p;
-        return {
-            ...originalData,
-            "Статус Триггера": __trigger_status__ || (processedPayments.length > 0 ? "не найден" : ""),
-            "Сработавший Триггер": __triggered_by__ || (processedPayments.length > 0 ? "" : ""),
-            "Ключевые слова триггера": (__matched_keywords__ && __matched_keywords__.length > 0) ? __matched_keywords__.join(', ') : (processedPayments.length > 0 ? "" : ""),
-        };
+      const { __trigger_status__, __triggered_by__, __matched_keywords__, __original_index__, ...originalData } = p;
+      return {
+        ...originalData,
+        "Статус Триггера": __trigger_status__ || (processedPayments.length > 0 ? "не найден" : ""),
+        "Сработавший Триггер": __triggered_by__ || (processedPayments.length > 0 ? "" : ""),
+        "Ключевые слова/фразы триггера": (__matched_keywords__ && __matched_keywords__.length > 0) ? __matched_keywords__.join(', ') : (processedPayments.length > 0 ? "" : ""),
+      };
     });
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
@@ -214,10 +219,10 @@ export default function PaymentTriggerCheck() {
     toast({ title: "Файл экспортирован" });
   };
 
-  const displayHeaders = headers.length > 0 
-    ? (processedPayments.length > 0 
-        ? [...headers, "Статус Триггера", "Сработавший Триггер", "Ключевые слова триггера"] 
-        : headers) 
+  const displayHeaders = headers.length > 0
+    ? (processedPayments.length > 0 || rawPayments.length > 0 // Show additional headers if there's data to display
+      ? [...headers, "Статус Триггера", "Сработавший Триггер", "Ключевые слова/фразы триггера"]
+      : headers)
     : [];
   const paymentsToDisplay = processedPayments.length > 0 ? processedPayments : rawPayments;
 
@@ -235,19 +240,19 @@ export default function PaymentTriggerCheck() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Input 
-            id="excel-upload" 
-            type="file" 
-            onChange={handleFileChange} 
+          <Input
+            id="excel-upload"
+            type="file"
+            onChange={handleFileChange}
             accept={ACCEPTABLE_FILE_EXTENSIONS}
             className="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border file:border-input file:text-sm file:font-semibold file:bg-secondary file:text-secondary-foreground hover:file:bg-secondary/80 cursor-pointer"
             disabled={isLoading}
           />
           {isLoading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-primary" />}
           {fileLoadMessage && !isLoading && (
-             <p className="mt-2 text-sm text-muted-foreground">
-                {fileLoadMessage}
-             </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {fileLoadMessage}
+            </p>
           )}
         </CardContent>
       </Card>
@@ -259,70 +264,70 @@ export default function PaymentTriggerCheck() {
             2. Управление триггерами
           </CardTitle>
           <CardDescription>
-            Создайте триггеры. Каждый триггер содержит слова/фразы для поиска (через пробел). 
+            Создайте триггеры. Каждый триггер содержит слова или фразы для поиска, **разделенные запятыми**.
             Поиск будет осуществляться по всем колонкам.
-            Триггер сработает, если хотя бы одно слово из его поискового текста будет найдено в любой ячейке строки.
+            Триггер сработает, если хотя бы одно слово или фраза из его поискового текста будет найдена в любой ячейке строки.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-            <Card className="p-4 bg-muted/30">
-                <h3 className="text-lg font-semibold mb-2">{editingTrigger ? "Редактирование триггера" : "Новый триггер"}</h3>
-                <div className="space-y-3">
-                    <Input 
-                        placeholder="Название триггера (например, 'Высокий риск')"
-                        value={currentTriggerName}
-                        onChange={(e) => setCurrentTriggerName(e.target.value)}
-                    />
-                    <Textarea 
-                        placeholder="Слова/фразы для поиска через пробел (например, 'срочно займ возврат')"
-                        value={currentSearchText}
-                        onChange={(e) => setCurrentSearchText(e.target.value)}
-                        rows={2}
-                    />
-                    <div className="flex gap-2 pt-2">
-                        <Button onClick={handleSaveTrigger}>
-                            {editingTrigger ? "Сохранить изменения" : "Добавить триггер"}
-                        </Button>
-                        {editingTrigger && <Button variant="ghost" onClick={handleCancelEditTrigger}>Отмена</Button>}
-                    </div>
-                </div>
-            </Card>
-            
-            {triggers.length > 0 && (
-                <Accordion type="single" collapsible className="w-full">
-                    <AccordionItem value="triggers-list">
-                        <AccordionTrigger className="text-lg hover:no-underline"><ListChecks className="mr-2 h-5 w-5 text-primary" />Сохраненные триггеры ({triggers.length})</AccordionTrigger>
-                        <AccordionContent className="pt-2 space-y-2">
-                             <ScrollArea className="h-40 pr-2">
-                                {triggers.map(trigger => (
-                                <Card key={trigger.id} className="p-3 mb-2">
-                                    <div className="flex justify-between items-start">
-                                    <div>
-                                        <h4 className="font-semibold text-md">{trigger.name}</h4>
-                                        <p className="text-xs text-muted-foreground">Поисковый текст: "{trigger.searchText}"</p>
-                                    </div>
-                                    <div className="flex gap-1">
-                                        <Button variant="ghost" size="icon" onClick={() => handleEditTrigger(trigger)} className="h-7 w-7" title="Редактировать">
-                                            <Edit3 className="h-4 w-4"/>
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleRemoveTrigger(trigger.id)} className="h-7 w-7" title="Удалить">
-                                            <Trash2 className="h-4 w-4 text-destructive"/>
-                                        </Button>
-                                    </div>
-                                    </div>
-                                </Card>
-                                ))}
-                            </ScrollArea>
-                        </AccordionContent>
-                    </AccordionItem>
-                </Accordion>
-            )}
+          <Card className="p-4 bg-muted/30">
+            <h3 className="text-lg font-semibold mb-2">{editingTrigger ? "Редактирование триггера" : "Новый триггер"}</h3>
+            <div className="space-y-3">
+              <Input
+                placeholder="Название триггера (например, 'Высокий риск')"
+                value={currentTriggerName}
+                onChange={(e) => setCurrentTriggerName(e.target.value)}
+              />
+              <Textarea
+                placeholder="Слова/фразы для поиска через ЗАПЯТУЮ (например, 'срочный платеж, возврат по договору 123, особые условия')"
+                value={currentSearchText}
+                onChange={(e) => setCurrentSearchText(e.target.value)}
+                rows={2}
+              />
+              <div className="flex gap-2 pt-2">
+                <Button onClick={handleSaveTrigger}>
+                  {editingTrigger ? "Сохранить изменения" : "Добавить триггер"}
+                </Button>
+                {editingTrigger && <Button variant="ghost" onClick={handleCancelEditTrigger}>Отмена</Button>}
+              </div>
+            </div>
+          </Card>
+
+          {triggers.length > 0 && (
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="triggers-list">
+                <AccordionTrigger className="text-lg hover:no-underline"><ListChecks className="mr-2 h-5 w-5 text-primary" />Сохраненные триггеры ({triggers.length})</AccordionTrigger>
+                <AccordionContent className="pt-2 space-y-2">
+                  <ScrollArea className="h-40 pr-2">
+                    {triggers.map(trigger => (
+                      <Card key={trigger.id} className="p-3 mb-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold text-md">{trigger.name}</h4>
+                            <p className="text-xs text-muted-foreground">Поисковый текст: "{trigger.searchText}"</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleEditTrigger(trigger)} className="h-7 w-7" title="Редактировать">
+                              <Edit3 className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleRemoveTrigger(trigger.id)} className="h-7 w-7" title="Удалить">
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </ScrollArea>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          )}
         </CardContent>
       </Card>
 
-      <Button 
-        onClick={processPayments} 
-        disabled={isLoading || isProcessing || rawPayments.length === 0 || triggers.length === 0} 
+      <Button
+        onClick={processPayments}
+        disabled={isLoading || isProcessing || rawPayments.length === 0 || triggers.length === 0}
         className="w-full text-lg py-6 rounded-lg"
       >
         {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : <Search className="mr-2 h-6 w-6" />}
@@ -338,7 +343,7 @@ export default function PaymentTriggerCheck() {
             </CardTitle>
             <CardDescription>
               Таблица с исходными данными и результатами проверки триггеров.
-              {processedPayments.length > 0 && 'Новые столбцы: "Статус Триггера", "Сработавший Триггер" и "Ключевые слова триггера".'}
+              {processedPayments.length > 0 && 'Новые столбцы: "Статус Триггера", "Сработавший Триггер" и "Ключевые слова/фразы триггера".'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -353,20 +358,20 @@ export default function PaymentTriggerCheck() {
                   {paymentsToDisplay.map((payment, index) => (
                     <TableRow key={payment.__original_index__ ?? index} className={payment.__trigger_status__ === "найден" ? "bg-accent/10 hover:bg-accent/20" : ""}>
                       {headers.map(header => <TableCell key={header}>{String(payment[header] ?? '')}</TableCell>)}
-                      {processedPayments.length > 0 && (
+                      {(processedPayments.length > 0 || rawPayments.length > 0) && ( // Conditionally render extra cells if data is present
                         <>
-                            <TableCell>
-                                <span className={cn(
-                                    "font-medium px-2 py-0.5 rounded-full text-xs",
-                                    payment.__trigger_status__ === "найден" && "bg-green-100 text-green-800",
-                                    payment.__trigger_status__ === "не найден" && "bg-gray-100 text-gray-700",
-                                    !payment.__trigger_status__ && "bg-gray-100 text-gray-700" 
-                                )}>
-                                    {payment.__trigger_status__ || "не найден"}
-                                </span>
-                            </TableCell>
-                            <TableCell>{payment.__triggered_by__ || ""}</TableCell>
-                            <TableCell>{(payment.__matched_keywords__ && payment.__matched_keywords__.length > 0) ? payment.__matched_keywords__.join(', ') : ""}</TableCell>
+                          <TableCell>
+                            <span className={cn(
+                              "font-medium px-2 py-0.5 rounded-full text-xs",
+                              payment.__trigger_status__ === "найден" && "bg-green-100 text-green-800",
+                              payment.__trigger_status__ === "не найден" && "bg-gray-100 text-gray-700",
+                              !payment.__trigger_status__ && processedPayments.length > 0 && "bg-gray-100 text-gray-700" // Only for processed
+                            )}>
+                              {processedPayments.length > 0 ? (payment.__trigger_status__ || "не найден") : ""}
+                            </span>
+                          </TableCell>
+                          <TableCell>{processedPayments.length > 0 ? (payment.__triggered_by__ || "") : ""}</TableCell>
+                          <TableCell>{processedPayments.length > 0 ? ((payment.__matched_keywords__ && payment.__matched_keywords__.length > 0) ? payment.__matched_keywords__.join(', ') : "") : ""}</TableCell>
                         </>
                       )}
                     </TableRow>
@@ -387,24 +392,24 @@ export default function PaymentTriggerCheck() {
 
       <Card className="shadow-xl rounded-xl opacity-70">
         <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl text-muted-foreground">
-                <Info className="h-6 w-6" /> Дополнительная информация
-            </CardTitle>
+          <CardTitle className="flex items-center gap-2 text-xl text-muted-foreground">
+            <Info className="h-6 w-6" /> Дополнительная информация
+          </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
-            <p>
-                **Важно:** Обработка файлов Excel происходит в вашем браузере. Для очень больших файлов производительность может снижаться.
-            </p>
-            <p>
-                **Требования к файлу:** Первый лист Excel должен содержать таблицу с платежами, где первая строка - заголовки столбцов. 
-            </p>
-             <p>
-                **Логика работы триггеров:** Триггер срабатывает, если **хотя бы одно** из его поисковых слов (разделенных пробелами в поле "Поисковый текст") найдено в любой ячейке строки.
-                Если платеж соответствует нескольким триггерам, будет указан первый сработавший триггер из вашего списка.
-            </p>
-            <p>
-                **Ограничение прав доступа и история предупреждений:** Эти функции на данном этапе не реализованы.
-            </p>
+          <p>
+            **Важно:** Обработка файлов Excel происходит в вашем браузере. Для очень больших файлов производительность может снижаться.
+          </p>
+          <p>
+            **Требования к файлу:** Первый лист Excel должен содержать таблицу с платежами, где первая строка - заголовки столбцов.
+          </p>
+          <p>
+            **Логика работы триггеров:** Триггер срабатывает, если **хотя бы одна** из его поисковых фраз (разделенных запятыми в поле "Поисковый текст") найдена в любой ячейке строки.
+            Если платеж соответствует нескольким триггерам, будет указан первый сработавший триггер из вашего списка.
+          </p>
+          <p>
+            **Ограничение прав доступа и история предупреждений:** Эти функции на данном этапе не реализованы.
+          </p>
         </CardContent>
       </Card>
     </div>
