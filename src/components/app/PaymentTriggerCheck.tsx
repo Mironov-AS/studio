@@ -30,15 +30,36 @@ interface PaymentRecord {
 interface Trigger {
   id: string;
   name: string;
-  searchText: string;
+  searchText: string; // Comma-separated list of words/phrases
 }
+
+const defaultTriggers: Trigger[] = [
+  { id: nanoid(), name: "Общество", searchText: "общество, общества" },
+  { id: nanoid(), name: "Уставный капитал", searchText: "уставный капитал" },
+  { id: nanoid(), name: "Доли", searchText: "доли, долей" },
+  { id: nanoid(), name: "Вложение", searchText: "вложение, вложения" },
+  { id: nanoid(), name: "Займ", searchText: "займ" },
+  { id: nanoid(), name: "Задолженность", searchText: "задолженность" },
+  { id: nanoid(), name: "Долг", searchText: "долг" },
+  { id: nanoid(), name: "Возврат", searchText: "возврат" },
+  { id: nanoid(), name: "Предоставление", searchText: "предоставление" },
+  { id: nanoid(), name: "Приобретение", searchText: "приобретение" },
+  { id: nanoid(), name: "Погашение", searchText: "погашение" },
+  { id: nanoid(), name: "Договор купли-продажи", searchText: "договор купли продажи, дкп" },
+  { id: nanoid(), name: "Земельный участок", searchText: "земельный участок" },
+  { id: nanoid(), name: "Имущество", searchText: "имущество" },
+  { id: nanoid(), name: "Недвижимость", searchText: "недвиж, недвижимость" },
+  { id: nanoid(), name: "Ценные бумаги", searchText: "ценные бумаги" },
+  { id: nanoid(), name: "Вексель", searchText: "вексел, вексель" },
+  { id: nanoid(), name: "Акции", searchText: "акции" },
+];
 
 export default function PaymentTriggerCheck() {
   const [rawPayments, setRawPayments] = useState<PaymentRecord[]>([]);
   const [processedPayments, setProcessedPayments] = useState<PaymentRecord[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
 
-  const [triggers, setTriggers] = useState<Trigger[]>([]);
+  const [triggers, setTriggers] = useState<Trigger[]>(defaultTriggers);
   const [currentTriggerName, setCurrentTriggerName] = useState('');
   const [currentSearchText, setCurrentSearchText] = useState('');
   const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null);
@@ -157,36 +178,35 @@ export default function PaymentTriggerCheck() {
       let matchedKeywordsForRow: string[] = [];
 
       for (const trigger of triggers) {
-        // Split search text by comma, trim whitespace, convert to lowercase, and filter out empty strings
-        const searchPhrases = trigger.searchText
+        const searchTerms = trigger.searchText
           .split(',')
-          .map(phrase => phrase.trim().toLowerCase())
-          .filter(phrase => phrase.length > 0);
+          .map(term => term.trim().toLowerCase())
+          .filter(Boolean); // Remove empty strings that might result from splitting
 
-        if (searchPhrases.length === 0) continue;
+        if (searchTerms.length === 0) continue;
 
-        let triggerMatchedInRow = false;
-        let currentTriggerMatchedPhrases: string[] = [];
+        let triggerMatched = false;
+        let currentTriggerMatchedTerms: string[] = [];
 
         for (const header of headers) {
           const cellValue = String(payment[header] ?? '').toLowerCase();
           if (!cellValue) continue;
 
-          for (const phrase of searchPhrases) {
-            if (cellValue.includes(phrase)) {
-              triggerMatchedInRow = true;
-              if (!currentTriggerMatchedPhrases.includes(phrase)) {
-                currentTriggerMatchedPhrases.push(phrase); // Store the exact phrase that matched
+          for (const term of searchTerms) {
+            if (cellValue.includes(term)) {
+              triggerMatched = true;
+              if (!currentTriggerMatchedTerms.includes(term)) {
+                 currentTriggerMatchedTerms.push(term);
               }
             }
           }
         }
-
-        if (triggerMatchedInRow) {
+        
+        if (triggerMatched) {
           status = "найден";
           triggeredByName = trigger.name;
-          matchedKeywordsForRow = currentTriggerMatchedPhrases;
-          break; // Stop checking other triggers for this payment if one is found
+          matchedKeywordsForRow = currentTriggerMatchedTerms;
+          break; 
         }
       }
       return { ...payment, __trigger_status__: status, __triggered_by__: triggeredByName, __matched_keywords__: matchedKeywordsForRow };
@@ -264,9 +284,8 @@ export default function PaymentTriggerCheck() {
             2. Управление триггерами
           </CardTitle>
           <CardDescription>
-            Создайте триггеры. Каждый триггер содержит слова или фразы для поиска, **разделенные запятыми**.
-            Поиск будет осуществляться по всем колонкам.
-            Триггер сработает, если хотя бы одно слово или фраза из его поискового текста будет найдена в любой ячейке строки.
+            Создайте или отредактируйте триггеры. Каждый триггер содержит имя и поисковый текст (слова или фразы через запятую).
+            Поиск будет осуществляться по всем колонкам. Триггер сработает, если хотя бы одна из его поисковых фраз будет найдена.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -294,7 +313,7 @@ export default function PaymentTriggerCheck() {
           </Card>
 
           {triggers.length > 0 && (
-            <Accordion type="single" collapsible className="w-full">
+            <Accordion type="single" collapsible className="w-full" defaultValue="triggers-list">
               <AccordionItem value="triggers-list">
                 <AccordionTrigger className="text-lg hover:no-underline"><ListChecks className="mr-2 h-5 w-5 text-primary" />Сохраненные триггеры ({triggers.length})</AccordionTrigger>
                 <AccordionContent className="pt-2 space-y-2">
@@ -358,14 +377,14 @@ export default function PaymentTriggerCheck() {
                   {paymentsToDisplay.map((payment, index) => (
                     <TableRow key={payment.__original_index__ ?? index} className={payment.__trigger_status__ === "найден" ? "bg-accent/10 hover:bg-accent/20" : ""}>
                       {headers.map(header => <TableCell key={header}>{String(payment[header] ?? '')}</TableCell>)}
-                      {(processedPayments.length > 0 || rawPayments.length > 0) && ( // Conditionally render extra cells if data is present
+                      {(processedPayments.length > 0 || rawPayments.length > 0) && ( 
                         <>
                           <TableCell>
                             <span className={cn(
                               "font-medium px-2 py-0.5 rounded-full text-xs",
                               payment.__trigger_status__ === "найден" && "bg-green-100 text-green-800",
                               payment.__trigger_status__ === "не найден" && "bg-gray-100 text-gray-700",
-                              !payment.__trigger_status__ && processedPayments.length > 0 && "bg-gray-100 text-gray-700" // Only for processed
+                              !payment.__trigger_status__ && processedPayments.length > 0 && "bg-gray-100 text-gray-700"
                             )}>
                               {processedPayments.length > 0 ? (payment.__trigger_status__ || "не найден") : ""}
                             </span>
