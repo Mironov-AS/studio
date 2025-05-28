@@ -35,6 +35,15 @@ const SUGGESTED_GOAL_COL = 'Предложенная Цель';
 const SUGGESTED_ACCEPTANCE_CRITERIA_COL = 'Предложенные Критерии Приемки';
 const ANALYSIS_NOTES_COL = 'Комментарий AI';
 
+const MAX_CELL_LENGTH = 32000; // Excel cell character limit is 32767
+
+const truncateString = (str: any, maxLength: number): string => {
+  const s = String(str ?? ''); // Ensure it's a string, handle null/undefined
+  if (s.length > maxLength) {
+    return s.substring(0, maxLength - 3) + "...";
+  }
+  return s;
+};
 
 // Schema for a single item in the form array
 const editableBacklogItemSchema = z.object({
@@ -120,7 +129,6 @@ export default function BacklogPrepAssistant() {
     reader.onload = (e) => {
       try {
         const data = e.target?.result;
-        // Set cellDates to false to prevent Date objects
         const workbook = XLSX.read(data, { type: 'binary', cellDates: false }); 
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
@@ -132,7 +140,7 @@ export default function BacklogPrepAssistant() {
           return;
         }
         
-        // Sanitize jsonData to ensure all cell values are primitives
+        // Sanitize jsonData to ensure all cell values are primitives (especially strings)
         const sanitizedJsonData = jsonData.map(row => {
           const sanitizedRow: Record<string, any> = {};
           for (const key in row) {
@@ -141,8 +149,7 @@ export default function BacklogPrepAssistant() {
               if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null || value === undefined) {
                 sanitizedRow[key] = value;
               } else {
-                // Convert any other type (e.g., special error objects from xlsx) to string
-                sanitizedRow[key] = String(value);
+                sanitizedRow[key] = String(value); // Convert any other type to string
               }
             }
           }
@@ -163,7 +170,7 @@ export default function BacklogPrepAssistant() {
             return {
                 id: nanoid(),
                 originalIndex: index,
-                rowData: row, // rowData is now sanitized
+                rowData: row, 
                 [USER_STORY_KEY]: userStoryColName ? String(row[userStoryColName] ?? '') : '',
                 [GOAL_KEY]: goalColName ? String(row[goalColName] ?? '') : '',
                 [ACCEPTANCE_CRITERIA_KEY]: acColName ? String(row[acColName] ?? '') : '',
@@ -173,7 +180,7 @@ export default function BacklogPrepAssistant() {
                 _analysisNotes: '',
             };
         });
-        replace(initialFormItems); // Use replace to set the whole array
+        replace(initialFormItems); 
 
         toast({ title: "Файл загружен", description: `"${file.name}" (${sanitizedJsonData.length} строк) успешно загружен.` });
       } catch (error) {
@@ -199,24 +206,21 @@ export default function BacklogPrepAssistant() {
     setAnalysisPerformed(false);
 
     const itemsToAnalyze: BacklogItemData[] = rawExcelData.map((row, index) => ({
-      id: fields[index]?.id || nanoid(), // Use existing ID if available, or generate new
-      rowData: row, // rowData is already sanitized here
+      id: fields[index]?.id || nanoid(),
+      rowData: row, 
     }));
 
     try {
       const result: AnalyzeBacklogCompletenessOutput = await analyzeBacklogCompleteness({ backlogItems: itemsToAnalyze });
       
-      // Merge AI results with existing form data
       const updatedFormItems = fields.map(formItem => {
         const aiResult = result.analyzedItems.find(ar => ar.id === formItem.id);
         if (aiResult) {
           return {
             ...formItem,
-            // If original was empty and AI suggested something, pre-fill the editable field with suggestion
             [USER_STORY_KEY]: (formItem[USER_STORY_KEY] || !aiResult.suggestedUserStory) ? formItem[USER_STORY_KEY] : aiResult.suggestedUserStory,
             [GOAL_KEY]: (formItem[GOAL_KEY] || !aiResult.suggestedGoal) ? formItem[GOAL_KEY] : aiResult.suggestedGoal,
             [ACCEPTANCE_CRITERIA_KEY]: (formItem[ACCEPTANCE_CRITERIA_KEY] || !aiResult.suggestedAcceptanceCriteria) ? formItem[ACCEPTANCE_CRITERIA_KEY] : aiResult.suggestedAcceptanceCriteria,
-            // Store suggestions separately for display
             _suggestedUserStory: aiResult.suggestedUserStory || '',
             _suggestedGoal: aiResult.suggestedGoal || '',
             _suggestedAcceptanceCriteria: aiResult.suggestedAcceptanceCriteria || '',
@@ -237,9 +241,6 @@ export default function BacklogPrepAssistant() {
   };
   
   const onSubmitForm = (data: FormValues) => {
-    // This function is called when the form is submitted, typically for saving changes.
-    // For now, we'll just log the data. Export will handle current form state.
-    console.log("Form submitted (for export):", data);
     downloadExcel(data.backlogItems);
   };
 
@@ -249,29 +250,33 @@ export default function BacklogPrepAssistant() {
       return;
     }
 
-    // Prepare data for export
     const dataForSheet = itemsToExport.map(item => {
-      const exportRow: Record<string, any> = { ...item.rowData }; // Start with original data
-      
-      // Update/add target columns from form state
-      if (identifiedColumns.userStoryCol) exportRow[identifiedColumns.userStoryCol] = item[USER_STORY_KEY];
-      else if(item[USER_STORY_KEY]) exportRow[USER_STORY_KEY] = item[USER_STORY_KEY]; // Add as new if not exists
+      const exportRow: Record<string, any> = {};
 
-      if (identifiedColumns.goalCol) exportRow[identifiedColumns.goalCol] = item[GOAL_KEY];
-      else if(item[GOAL_KEY]) exportRow[GOAL_KEY] = item[GOAL_KEY];
-
-      if (identifiedColumns.acceptanceCriteriaCol) exportRow[identifiedColumns.acceptanceCriteriaCol] = item[ACCEPTANCE_CRITERIA_KEY];
-      else if(item[ACCEPTANCE_CRITERIA_KEY]) exportRow[ACCEPTANCE_CRITERIA_KEY] = item[ACCEPTANCE_CRITERIA_KEY];
-
-      // Add AI suggestion columns if analysis was performed
-      if (analysisPerformed) {
-        exportRow[SUGGESTED_USER_STORY_COL] = item._suggestedUserStory || '';
-        exportRow[SUGGESTED_GOAL_COL] = item._suggestedGoal || '';
-        exportRow[SUGGESTED_ACCEPTANCE_CRITERIA_COL] = item._suggestedAcceptanceCriteria || '';
-        exportRow[ANALYSIS_NOTES_COL] = item._analysisNotes || '';
+      // Process original rowData, truncating long strings
+      for (const key in item.rowData) {
+        if (Object.prototype.hasOwnProperty.call(item.rowData, key)) {
+          exportRow[key] = truncateString(item.rowData[key], MAX_CELL_LENGTH);
+        }
       }
-      // Remove internal fields before export
-      const {_suggestedUserStory, _suggestedGoal, _suggestedAcceptanceCriteria, _analysisNotes, id, originalIndex, rowData, ...restOfItem} = item;
+      
+      // Update/add target columns from form state, truncating long strings
+      const userStoryColKey = identifiedColumns.userStoryCol || USER_STORY_KEY;
+      exportRow[userStoryColKey] = truncateString(item[USER_STORY_KEY], MAX_CELL_LENGTH);
+
+      const goalColKey = identifiedColumns.goalCol || GOAL_KEY;
+      exportRow[goalColKey] = truncateString(item[GOAL_KEY], MAX_CELL_LENGTH);
+      
+      const acColKey = identifiedColumns.acceptanceCriteriaCol || ACCEPTANCE_CRITERIA_KEY;
+      exportRow[acColKey] = truncateString(item[ACCEPTANCE_CRITERIA_KEY], MAX_CELL_LENGTH);
+
+      // Add AI suggestion columns if analysis was performed, truncating long strings
+      if (analysisPerformed) {
+        exportRow[SUGGESTED_USER_STORY_COL] = truncateString(item._suggestedUserStory, MAX_CELL_LENGTH);
+        exportRow[SUGGESTED_GOAL_COL] = truncateString(item._suggestedGoal, MAX_CELL_LENGTH);
+        exportRow[SUGGESTED_ACCEPTANCE_CRITERIA_COL] = truncateString(item._suggestedAcceptanceCriteria, MAX_CELL_LENGTH);
+        exportRow[ANALYSIS_NOTES_COL] = truncateString(item._analysisNotes, MAX_CELL_LENGTH);
+      }
       return exportRow;
     });
 
@@ -280,7 +285,6 @@ export default function BacklogPrepAssistant() {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Обработанный бэклог");
     
     const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    // Use correct MIME type for XLSX and do NOT prepend BOM for binary XLSX files.
     const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 
     const link = document.createElement("a");
@@ -290,11 +294,22 @@ export default function BacklogPrepAssistant() {
     link.click();
     document.body.removeChild(link);
 
-    toast({ title: "Файл экспортирован", description: "Бэклог с предложениями AI сохранен." });
+    toast({ title: "Файл экспортирован", description: "Бэклог с предложениями AI сохранен. Длинные текстовые поля были автоматически сокращены при необходимости." });
   };
   
   const displayTableHeaders = useMemo(() => {
     let currentHeaders = [...excelHeaders];
+    // Ensure target columns are present in headers if they were not in original file but added by form
+    if (!identifiedColumns.userStoryCol && fields.some(f => f[USER_STORY_KEY])) {
+        if (!currentHeaders.includes(USER_STORY_KEY)) currentHeaders.push(USER_STORY_KEY);
+    }
+    if (!identifiedColumns.goalCol && fields.some(f => f[GOAL_KEY])) {
+         if (!currentHeaders.includes(GOAL_KEY)) currentHeaders.push(GOAL_KEY);
+    }
+    if (!identifiedColumns.acceptanceCriteriaCol && fields.some(f => f[ACCEPTANCE_CRITERIA_KEY])) {
+        if (!currentHeaders.includes(ACCEPTANCE_CRITERIA_KEY)) currentHeaders.push(ACCEPTANCE_CRITERIA_KEY);
+    }
+
     if (analysisPerformed) {
         if (!currentHeaders.includes(SUGGESTED_USER_STORY_COL)) currentHeaders.push(SUGGESTED_USER_STORY_COL);
         if (!currentHeaders.includes(SUGGESTED_GOAL_COL)) currentHeaders.push(SUGGESTED_GOAL_COL);
@@ -302,7 +317,7 @@ export default function BacklogPrepAssistant() {
         if (!currentHeaders.includes(ANALYSIS_NOTES_COL)) currentHeaders.push(ANALYSIS_NOTES_COL);
     }
     return currentHeaders;
-  }, [excelHeaders, analysisPerformed]);
+  }, [excelHeaders, analysisPerformed, fields, identifiedColumns]);
 
 
   return (
@@ -386,14 +401,14 @@ export default function BacklogPrepAssistant() {
                     <TableBody>
                       {fields.map((item, index) => (
                         <TableRow key={item.id}>
-                          {excelHeaders.map(header => (
+                          {excelHeaders.map(header => ( // Iterate over original headers to maintain order and content
                             <TableCell key={`${item.id}-${header}`} className="text-xs align-top">
-                                {header === identifiedColumns.userStoryCol || (header === USER_STORY_KEY && !identifiedColumns.userStoryCol) ? (
-                                    <Controller name={`backlogItems.${index}.${USER_STORY_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={3} className="text-xs"/>} />
-                                ) : header === identifiedColumns.goalCol || (header === GOAL_KEY && !identifiedColumns.goalCol) ? (
-                                    <Controller name={`backlogItems.${index}.${GOAL_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={2} className="text-xs"/>} />
-                                ) : header === identifiedColumns.acceptanceCriteriaCol || (header === ACCEPTANCE_CRITERIA_KEY && !identifiedColumns.acceptanceCriteriaCol) ? (
-                                    <Controller name={`backlogItems.${index}.${ACCEPTANCE_CRITERIA_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={4} className="text-xs"/>} />
+                                {header === (identifiedColumns.userStoryCol || USER_STORY_KEY) ? (
+                                    <Controller name={`backlogItems.${index}.${USER_STORY_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} defaultValue={item[USER_STORY_KEY]} rows={3} className="text-xs"/>} />
+                                ) : header === (identifiedColumns.goalCol || GOAL_KEY) ? (
+                                    <Controller name={`backlogItems.${index}.${GOAL_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} defaultValue={item[GOAL_KEY]} rows={2} className="text-xs"/>} />
+                                ) : header === (identifiedColumns.acceptanceCriteriaCol || ACCEPTANCE_CRITERIA_KEY) ? (
+                                    <Controller name={`backlogItems.${index}.${ACCEPTANCE_CRITERIA_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} defaultValue={item[ACCEPTANCE_CRITERIA_KEY]} rows={4} className="text-xs"/>} />
                                 ) : (
                                    String(item.rowData[header] ?? '')
                                 )}
@@ -446,5 +461,3 @@ export default function BacklogPrepAssistant() {
     </div>
   );
 }
-
-    
