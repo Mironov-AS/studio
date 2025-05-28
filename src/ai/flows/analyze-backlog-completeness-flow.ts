@@ -57,13 +57,22 @@ const SingleBacklogItemAnalysisPromptInputSchema = z.object({
 });
 
 export async function analyzeBacklogCompleteness(input: AnalyzeBacklogCompletenessInput): Promise<AnalyzeBacklogCompletenessOutput> {
-  return analyzeBacklogCompletenessFlow(input);
+  console.log(`[analyzeBacklogCompleteness WRAPPER] Received request with ${input.backlogItems?.length || 0} items.`);
+  try {
+    return await analyzeBacklogCompletenessFlow(input);
+  } catch (e: any) {
+    console.error(`[analyzeBacklogCompleteness WRAPPER] Unhandled error in flow execution: ${JSON.stringify(e, Object.getOwnPropertyNames(e))}`, e);
+    // For "unexpected response", it's often better to rethrow so Next.js can attempt its own error handling/logging.
+    // Or, construct a specific error object if that helps client-side.
+    // throw new Error(`Flow execution failed: ${e.message || 'Unknown error'}`);
+    throw e;
+  }
 }
 
 const analyzeSingleItemPrompt = ai.definePrompt({
   name: 'analyzeSingleBacklogItemPrompt',
   input: {schema: SingleBacklogItemAnalysisPromptInputSchema},
-  output: {schema: BacklogAnalysisResultSchema}, 
+  output: {schema: BacklogAnalysisResultSchema},
   prompt: `Ты — опытный Product Owner и Agile Coach. Твоя задача — проанализировать ОДИН элемент бэклога.
 Элемент представлен через 'id' и 'rowDataJsonString' (данные строки из Excel в виде JSON строки).
 В 'rowDataJsonString' (после его мысленного парсинга в объект) ищи поля, соответствующие "Пользовательская история", "Цель" и "Критерии приемки" (и их возможные вариации на русском языке, например, "User Story", "Цели", "Критерии готовности").
@@ -119,15 +128,19 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
     outputSchema: AnalyzeBacklogCompletenessOutputSchema,
   },
   async (input: AnalyzeBacklogCompletenessInput): Promise<AnalyzeBacklogCompletenessOutput> => {
+    console.log(`[Flow Start] Analyzing ${input.backlogItems?.length || 0} backlog items.`);
     if (!input.backlogItems || input.backlogItems.length === 0) {
+      console.log("[Flow End] No items to process.");
       return { analyzedItems: [] };
     }
 
     const analyzedItems: BacklogAnalysisResult[] = [];
-    const MAX_RETRIES_PER_ITEM = 3; // Increased from 2
-    const INITIAL_DELAY_MS_PER_ITEM = 2000; // Increased from 1000
+    const MAX_RETRIES_PER_ITEM = 3;
+    const INITIAL_DELAY_MS_PER_ITEM = 2000;
 
-    for (const item of input.backlogItems) {
+    for (let i = 0; i < input.backlogItems.length; i++) {
+      const item = input.backlogItems[i];
+      console.log(`[Flow Item Start] Processing item ${i + 1}/${input.backlogItems.length} (ID: ${item.id})`);
       let attempt = 0;
       let itemProcessedSuccessfully = false;
 
@@ -136,70 +149,60 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
         rowDataJsonString: JSON.stringify(item.rowData),
       };
 
-      while (attempt < MAX_RETRIES_PER_ITEM) {
+      while (attempt < MAX_RETRIES_PER_ITEM && !itemProcessedSuccessfully) {
         let currentAttemptFailed = false;
+        console.log(`[Flow Item Attempt] Item ID ${item.id}, Attempt ${attempt + 1}/${MAX_RETRIES_PER_ITEM}`);
         try {
           const { output } = await analyzeSingleItemPrompt(promptPayload);
           if (output) {
-            // Ensure the returned ID matches the input ID
-            analyzedItems.push({ ...output, id: item.id });
+            analyzedItems.push({ ...output, id: item.id }); // Ensure the original ID is used
             itemProcessedSuccessfully = true;
-            break; // Exit retry loop for this item
+            console.log(`[Flow Item Success] Item ID ${item.id} processed successfully on attempt ${attempt + 1}.`);
           } else {
-            // Output is null/undefined, but no error was thrown.
-            console.warn(`AI returned null/undefined output for item ${item.id} on attempt ${attempt + 1}.`);
+            console.warn(`[Flow Item Warn] AI returned null/undefined output for item ${item.id} on attempt ${attempt + 1}.`);
             currentAttemptFailed = true;
           }
         } catch (e: any) {
-          currentAttemptFailed = true; // Mark as failed if an error is caught
-          const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : JSON.stringify(e, Object.getOwnPropertyNames(e));
-          const isRetryableError =
-            errorMessage.includes('503') || // Service Unavailable
-            errorMessage.includes('overloaded') ||
-            errorMessage.includes('service unavailable') ||
-            errorMessage.includes('rate limit') ||
-            errorMessage.includes('resource has been exhausted') ||
-            errorMessage.includes('deadline exceeded') ||
-            errorMessage.includes('429');
+          currentAttemptFailed = true;
+          const errorMessage = typeof e.message === 'string' ? e.message : JSON.stringify(e, Object.getOwnPropertyNames(e));
+          console.error(`[Flow Item Error] Error for item ${item.id} on attempt ${attempt + 1}: ${errorMessage}`);
 
-          if (isRetryableError) {
-            console.warn(`Retryable error for item ${item.id} on attempt ${attempt + 1}. Error: ${errorMessage}`);
-            // Will proceed to delay and retry if attempts left
-          } else {
-            console.error(`Non-retryable error for item ${item.id}:`, e);
-            break; // Exit retry loop for this item, itemProcessedSuccessfully remains false
+          const isRetryableError =
+            errorMessage.toLowerCase().includes('503') ||
+            errorMessage.toLowerCase().includes('overloaded') ||
+            errorMessage.toLowerCase().includes('service unavailable') ||
+            errorMessage.toLowerCase().includes('rate limit') ||
+            errorMessage.toLowerCase().includes('resource has been exhausted') ||
+            errorMessage.toLowerCase().includes('deadline exceeded') ||
+            errorMessage.toLowerCase().includes('429');
+
+          if (!isRetryableError) {
+            console.error(`[Flow Item Error] Non-retryable error for item ${item.id}. Aborting retries for this item.`);
+            break; // Exit retry loop for this item due to non-retryable error
           }
         }
 
-        if (currentAttemptFailed) {
-          attempt++; // Increment attempt count
+        if (currentAttemptFailed && !itemProcessedSuccessfully) {
+          attempt++;
           if (attempt < MAX_RETRIES_PER_ITEM) {
-            // For exponential backoff, the exponent should ideally be based on the number of retries already made
-            const delay = INITIAL_DELAY_MS_PER_ITEM * Math.pow(2, attempt -1 ); // attempt -1 ensures first retry is INITIAL_DELAY, second is INITIAL_DELAY*2, etc.
-            console.warn(`Retrying item ${item.id} in ${delay / 1000}s... (Next attempt will be ${attempt + 1}/${MAX_RETRIES_PER_ITEM})`);
+            const delay = INITIAL_DELAY_MS_PER_ITEM * Math.pow(2, attempt - 1);
+            console.warn(`[Flow Item Retry] Retrying item ${item.id} in ${delay / 1000}s... (Next attempt ${attempt + 1}/${MAX_RETRIES_PER_ITEM})`);
             await new Promise(resolve => setTimeout(resolve, delay));
           } else {
-            // Max retries reached after a failed attempt
-            console.warn(`Max retries reached for item ${item.id} after failed attempt ${attempt}.`);
-            break; // Exit retry loop
+            console.warn(`[Flow Item Retry] Max retries (${MAX_RETRIES_PER_ITEM}) reached for item ${item.id}.`);
           }
         }
       } // End of while loop
 
       if (!itemProcessedSuccessfully) {
+        console.error(`[Flow Item Failed] Failed to process item ${item.id} after ${MAX_RETRIES_PER_ITEM} attempts.`);
         analyzedItems.push({
           id: item.id,
-          identifiedUserStory: undefined,
-          suggestedUserStory: undefined,
-          identifiedGoal: undefined,
-          suggestedGoal: undefined,
-          identifiedAcceptanceCriteria: undefined,
-          suggestedAcceptanceCriteria: undefined,
-          analysisNotes: `AI не смог обработать этот элемент бэклога (ID: ${item.id}).`,
+          analysisNotes: `AI не смог обработать этот элемент бэклога (ID: ${item.id}) после ${MAX_RETRIES_PER_ITEM} попыток.`,
         });
       }
     }
+    console.log(`[Flow End] Finished processing. Returning ${analyzedItems.length} items. Analyzed items: ${JSON.stringify(analyzedItems.map(it => ({id: it.id, notes: it.analysisNotes?.substring(0,50)})))}`);
     return { analyzedItems };
   }
 );
-
