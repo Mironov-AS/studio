@@ -2,7 +2,7 @@
 "use client";
 
 import type { ChangeEvent } from 'react';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,11 +16,19 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { analyzeBacklogCompleteness, type AnalyzeBacklogCompletenessInput, type AnalyzeBacklogCompletenessOutput, type BacklogItemData, type BacklogAnalysisResult } from '@/ai/flows/analyze-backlog-completeness-flow';
-import { Loader2, FileUp, Sparkles, ListChecks, Download, Edit3, Check, XIcon, AlertTriangle, TableIcon, PlayCircle } from 'lucide-react';
+import { Loader2, FileUp, Sparkles, ListChecks, Download, Edit3, Check, XIcon, AlertTriangle, TableIcon, PlayCircle, Settings2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from "@/lib/utils";
-import { Form } from "@/components/ui/form"; 
+import { Form } from "@/components/ui/form";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".xlsx,.xls";
 
@@ -34,6 +42,10 @@ const SUGGESTED_USER_STORY_COL = 'Предложенная User Story';
 const SUGGESTED_GOAL_COL = 'Предложенная Цель';
 const SUGGESTED_ACCEPTANCE_CRITERIA_COL = 'Предложенные Критерии Приемки';
 const ANALYSIS_NOTES_COL = 'Комментарий AI';
+const ACTION_COL = "AI Анализ"; // Column for analysis button
+
+const CORE_AI_COLUMNS = [SUGGESTED_USER_STORY_COL, SUGGESTED_GOAL_COL, SUGGESTED_ACCEPTANCE_CRITERIA_COL, ANALYSIS_NOTES_COL, ACTION_COL];
+
 
 const MAX_CELL_LENGTH = 32000; // Excel cell character limit is 32767
 
@@ -76,9 +88,26 @@ export default function BacklogPrepAssistant() {
   
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [analyzingRowId, setAnalyzingRowId] = useState<string | null>(null); // ID of the row being analyzed
-  // Removed global analysisPerformed state
 
   const { toast } = useToast();
+
+  const [allToggleableColumns, setAllToggleableColumns] = useState<string[]>([]);
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (excelHeaders.length > 0) {
+      const newAllToggleable = [...excelHeaders, ...CORE_AI_COLUMNS];
+      setAllToggleableColumns(newAllToggleable);
+      const initialVisibility: Record<string, boolean> = {};
+      newAllToggleable.forEach(header => {
+        initialVisibility[header] = true; // Initially all columns are visible
+      });
+      setColumnVisibility(initialVisibility);
+    } else {
+      setAllToggleableColumns([]);
+      setColumnVisibility({});
+    }
+  }, [excelHeaders]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -294,28 +323,12 @@ export default function BacklogPrepAssistant() {
     toast({ title: "Файл экспортирован", description: "Бэклог с предложениями AI сохранен. Длинные текстовые поля были автоматически сокращены при необходимости." });
   };
   
-  const displayTableHeaders = useMemo(() => {
-    let currentHeaders = [...excelHeaders];
-    if (!identifiedColumns.userStoryCol && fields.some(f => f[USER_STORY_KEY])) {
-        if (!currentHeaders.includes(USER_STORY_KEY)) currentHeaders.push(USER_STORY_KEY);
-    }
-    if (!identifiedColumns.goalCol && fields.some(f => f[GOAL_KEY])) {
-         if (!currentHeaders.includes(GOAL_KEY)) currentHeaders.push(GOAL_KEY);
-    }
-    if (!identifiedColumns.acceptanceCriteriaCol && fields.some(f => f[ACCEPTANCE_CRITERIA_KEY])) {
-        if (!currentHeaders.includes(ACCEPTANCE_CRITERIA_KEY)) currentHeaders.push(ACCEPTANCE_CRITERIA_KEY);
-    }
-
-    // Always include suggestion columns in headers if there's data, as analysis is per row
-    if (fields.length > 0) {
-        if (!currentHeaders.includes(SUGGESTED_USER_STORY_COL)) currentHeaders.push(SUGGESTED_USER_STORY_COL);
-        if (!currentHeaders.includes(SUGGESTED_GOAL_COL)) currentHeaders.push(SUGGESTED_GOAL_COL);
-        if (!currentHeaders.includes(SUGGESTED_ACCEPTANCE_CRITERIA_COL)) currentHeaders.push(SUGGESTED_ACCEPTANCE_CRITERIA_COL);
-        if (!currentHeaders.includes(ANALYSIS_NOTES_COL)) currentHeaders.push(ANALYSIS_NOTES_COL);
-    }
-    currentHeaders.push("AI Анализ"); // Column for analysis button
-    return currentHeaders;
-  }, [excelHeaders, fields, identifiedColumns]);
+  const toggleColumnVisibility = (columnHeader: string) => {
+    setColumnVisibility(prev => ({
+      ...prev,
+      [columnHeader]: !prev[columnHeader],
+    }));
+  };
 
 
   return (
@@ -356,12 +369,32 @@ export default function BacklogPrepAssistant() {
           <form onSubmit={form.handleSubmit(onSubmitForm)}>
             <Card className="shadow-xl rounded-xl mt-6">
               <CardHeader>
-                <CardTitle className="flex items-center justify-between text-xl">
-                  <div className="flex items-center gap-2">
-                    <ListChecks className="h-6 w-6 text-accent" />
-                    2. Редактируемый бэклог с предложениями AI
-                  </div>
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                        <ListChecks className="h-6 w-6 text-accent" />
+                        2. Редактируемый бэклог с предложениями AI
+                    </CardTitle>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                            <Settings2 className="mr-2 h-4 w-4" /> Столбцы
+                        </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuLabel>Отображаемые столбцы</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {allToggleableColumns.map((header) => (
+                            <DropdownMenuCheckboxItem
+                            key={header}
+                            checked={columnVisibility[header]}
+                            onCheckedChange={() => toggleColumnVisibility(header)}
+                            >
+                            {header}
+                            </DropdownMenuCheckboxItem>
+                        ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
                 <CardDescription>
                   Просмотрите исходные данные. Для получения предложений AI нажмите кнопку "Анализ" в соответствующей строке. Вы можете отредактировать поля "{USER_STORY_KEY}", "{GOAL_KEY}" и "{ACCEPTANCE_CRITERIA_KEY}" перед экспортом.
                 </CardDescription>
@@ -371,59 +404,80 @@ export default function BacklogPrepAssistant() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        {displayTableHeaders.map(header => (
-                          <TableHead key={header} className={
-                            [USER_STORY_KEY, GOAL_KEY, ACCEPTANCE_CRITERIA_KEY, SUGGESTED_USER_STORY_COL, SUGGESTED_GOAL_COL, SUGGESTED_ACCEPTANCE_CRITERIA_COL, ANALYSIS_NOTES_COL].includes(header) ? 'min-w-[250px]' : 'min-w-[150px]'
-                          }>{header}</TableHead>
-                        ))}
+                        {excelHeaders.map(header => 
+                          columnVisibility[header] && (
+                            <TableHead key={header} className={
+                              [identifiedColumns.userStoryCol, identifiedColumns.goalCol, identifiedColumns.acceptanceCriteriaCol].includes(header) ? 'min-w-[250px]' : 'min-w-[150px]'
+                            }>{header}</TableHead>
+                          )
+                        )}
+                        {CORE_AI_COLUMNS.map(colName => 
+                          columnVisibility[colName] && (
+                            <TableHead key={colName} className='min-w-[250px]'>
+                              {colName}
+                            </TableHead>
+                          )
+                        )}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {fields.map((item, index) => (
                         <TableRow key={item.id}>
                           {excelHeaders.map(header => ( 
-                            <TableCell key={`${item.id}-${header}`} className="text-xs align-top">
-                                {header === (identifiedColumns.userStoryCol || USER_STORY_KEY) ? (
-                                    <Controller name={`backlogItems.${index}.${USER_STORY_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={3} className="text-xs"/>} />
-                                ) : header === (identifiedColumns.goalCol || GOAL_KEY) ? (
-                                    <Controller name={`backlogItems.${index}.${GOAL_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={2} className="text-xs"/>} />
-                                ) : header === (identifiedColumns.acceptanceCriteriaCol || ACCEPTANCE_CRITERIA_KEY) ? (
-                                    <Controller name={`backlogItems.${index}.${ACCEPTANCE_CRITERIA_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={4} className="text-xs"/>} />
-                                ) : (
-                                   String(item.rowData[header] ?? '')
-                                )}
-                            </TableCell>
+                            columnVisibility[header] && (
+                                <TableCell key={`${item.id}-${header}`} className="text-xs align-top">
+                                    {header === (identifiedColumns.userStoryCol || USER_STORY_KEY) ? (
+                                        <Controller name={`backlogItems.${index}.${USER_STORY_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={3} className="text-xs"/>} />
+                                    ) : header === (identifiedColumns.goalCol || GOAL_KEY) ? (
+                                        <Controller name={`backlogItems.${index}.${GOAL_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={2} className="text-xs"/>} />
+                                    ) : header === (identifiedColumns.acceptanceCriteriaCol || ACCEPTANCE_CRITERIA_KEY) ? (
+                                        <Controller name={`backlogItems.${index}.${ACCEPTANCE_CRITERIA_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={4} className="text-xs"/>} />
+                                    ) : (
+                                    String(item.rowData[header] ?? '')
+                                    )}
+                                </TableCell>
+                            )
                           ))}
                           {/* Display AI suggestion columns */}
-                          <TableCell className="text-xs align-top bg-blue-50 border-l border-blue-200">
-                            <Textarea value={item._suggestedUserStory || ''} readOnly rows={3} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
-                          </TableCell>
-                          <TableCell className="text-xs align-top bg-green-50 border-l border-green-200">
-                              <Textarea value={item._suggestedGoal || ''} readOnly rows={2} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
-                          </TableCell>
-                          <TableCell className="text-xs align-top bg-purple-50 border-l border-purple-200">
-                            <Textarea value={item._suggestedAcceptanceCriteria || ''} readOnly rows={4} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
-                          </TableCell>
-                          <TableCell className="text-xs align-top bg-gray-50 border-l border-gray-200">
-                            <Textarea value={item._analysisNotes || ''} readOnly rows={2} className="text-xs bg-white" placeholder={item._analysisPerformed ? "-" : "Нажмите 'Анализ'"}/>
-                          </TableCell>
-                          <TableCell className="text-xs align-top text-center">
-                            <Button 
-                                type="button" 
-                                onClick={() => handleAnalyzeSingleRow(index)} 
-                                disabled={!!analyzingRowId && analyzingRowId !== item.id} 
-                                size="sm"
-                                variant="outline"
-                                className="w-full"
-                            >
-                                {analyzingRowId === item.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <PlayCircle className="h-4 w-4 mr-1" />
-                                )}
-                                Анализ
-                            </Button>
-                          </TableCell>
+                          {columnVisibility[SUGGESTED_USER_STORY_COL] && (
+                            <TableCell className="text-xs align-top bg-blue-50 border-l border-blue-200">
+                                <Textarea value={item._suggestedUserStory || ''} readOnly rows={3} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
+                            </TableCell>
+                          )}
+                          {columnVisibility[SUGGESTED_GOAL_COL] && (
+                            <TableCell className="text-xs align-top bg-green-50 border-l border-green-200">
+                                <Textarea value={item._suggestedGoal || ''} readOnly rows={2} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
+                            </TableCell>
+                          )}
+                          {columnVisibility[SUGGESTED_ACCEPTANCE_CRITERIA_COL] && (
+                            <TableCell className="text-xs align-top bg-purple-50 border-l border-purple-200">
+                                <Textarea value={item._suggestedAcceptanceCriteria || ''} readOnly rows={4} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
+                            </TableCell>
+                          )}
+                          {columnVisibility[ANALYSIS_NOTES_COL] && (
+                            <TableCell className="text-xs align-top bg-gray-50 border-l border-gray-200">
+                                <Textarea value={item._analysisNotes || ''} readOnly rows={2} className="text-xs bg-white" placeholder={item._analysisPerformed ? "-" : "Нажмите 'Анализ'"}/>
+                            </TableCell>
+                          )}
+                          {columnVisibility[ACTION_COL] && (
+                            <TableCell className="text-xs align-top text-center">
+                                <Button 
+                                    type="button" 
+                                    onClick={() => handleAnalyzeSingleRow(index)} 
+                                    disabled={!!analyzingRowId && analyzingRowId !== item.id} 
+                                    size="sm"
+                                    variant="outline"
+                                    className="w-full"
+                                >
+                                    {analyzingRowId === item.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <PlayCircle className="h-4 w-4 mr-1" />
+                                    )}
+                                    Анализ
+                                </Button>
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -431,7 +485,7 @@ export default function BacklogPrepAssistant() {
                 </ScrollArea>
                  <CardDescription className="mt-2 text-xs">
                     Колонки "{USER_STORY_KEY}", "{GOAL_KEY}", "{ACCEPTANCE_CRITERIA_KEY}" являются редактируемыми.
-                    Колонки с суффиксом "(Предложение AI)" содержат предложения AI и не редактируются напрямую.
+                    Колонки с префиксом "Предложенн(ая/ые)" содержат предложения AI и не редактируются напрямую.
                 </CardDescription>
               </CardContent>
               <CardFooter>
