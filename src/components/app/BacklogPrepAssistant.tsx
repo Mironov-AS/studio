@@ -20,6 +20,7 @@ import { Loader2, FileUp, Sparkles, ListChecks, Download, Edit3, Check, XIcon, A
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from "@/lib/utils";
+import { Form } from "@/components/ui/form"; // Added Form import
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".xlsx,.xls";
 
