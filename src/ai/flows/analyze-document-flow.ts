@@ -1,6 +1,7 @@
+
 'use server';
 /**
- * @fileOverview Analyzes a document to provide a summary and identify its type.
+ * @fileOverview Analyzes a document to provide a summary, identify its type, and extract its date.
  *
  * - analyzeDocument - A function that handles the document analysis.
  * - AnalyzeDocumentInput - The input type for the analyzeDocument function.
@@ -24,6 +25,7 @@ export type AnalyzeDocumentInput = z.infer<typeof AnalyzeDocumentInputSchema>;
 const AnalyzeDocumentOutputSchema = z.object({
   summary: z.string().describe('A concise summary of the document in Russian.'),
   documentType: z.string().describe('The identified type of the document in Russian (e.g., Договор, Справка, Заявление, Техническое задание).'),
+  documentDate: z.string().optional().describe("Дата документа, если она явно указана в тексте (например, ДД.ММ.ГГГГ, ГГГГ-ММ-ДД). Если дата не найдена или не указана, это поле может быть пустым."),
 });
 export type AnalyzeDocumentOutput = z.infer<typeof AnalyzeDocumentOutputSchema>;
 
@@ -45,7 +47,7 @@ const prompt = ai.definePrompt({
   name: 'analyzeDocumentPrompt',
   input: {schema: InternalAnalyzeDocumentPromptInputSchema}, // Use internal schema
   output: {schema: AnalyzeDocumentOutputSchema},
-  prompt: `Вы — AI-ассистент, специализирующийся на анализе документов. Ваша задача — проанализировать предоставленный документ, составить краткую сводку его содержания и определить тип документа.
+  prompt: `Вы — AI-ассистент, специализирующийся на анализе документов. Ваша задача — проанализировать предоставленный документ, составить краткую сводку его содержания, определить тип документа и, если возможно, извлечь дату документа.
 
 {{#if isMediaDocument}}
 Документ для анализа (медиа):
@@ -62,8 +64,9 @@ const prompt = ai.definePrompt({
 {{/if}}
 
 Проанализируйте содержимое документа и предоставьте:
-1.  **Краткая сводка**: Основные тезисы и суть документа на русском языке.
-2.  **Тип документа**: Определите тип документа (например, Договор, Заявление, Техническое задание, Отчет, Презентация, Письмо и т.д.) на русском языке.
+1.  **Краткая сводка (summary)**: Основные тезисы и суть документа на русском языке.
+2.  **Тип документа (documentType)**: Определите тип документа (например, Договор, Заявление, Техническое задание, Отчет, Презентация, Письмо и т.д.) на русском языке.
+3.  **Дата документа (documentDate)**: Если в документе явно указана дата его создания или подписания (например, "01.01.2024", "2024-01-01", "1 января 2024 г."), извлеките ее. Если дат несколько, извлеките наиболее релевантную дату составления документа. Если дата отсутствует или не может быть однозначно определена, оставьте поле пустым.
 
 Убедитесь, что ваш ответ структурирован согласно указанным полям вывода.
 `,
@@ -157,3 +160,4 @@ const analyzeDocumentFlow = ai.defineFlow(
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
+

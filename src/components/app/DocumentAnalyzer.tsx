@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { ChangeEvent } from 'react';
@@ -8,8 +9,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { analyzeDocument, AnalyzeDocumentOutput } from '@/ai/flows/analyze-document-flow';
-import { Loader2, FileUp, FileText, Sparkles } from 'lucide-react';
+import { analyzeDocument, type AnalyzeDocumentOutput } from '@/ai/flows/analyze-document-flow'; // Updated type import
+import { Loader2, FileUp, FileText, Sparkles, CalendarDays } from 'lucide-react'; // Added CalendarDays
 
 // Updated to reflect backend capabilities: TXT, PDF, and common image formats.
 const ACCEPTABLE_FILE_EXTENSIONS = ".txt,.pdf,.png,.jpg,.jpeg,.webp";
@@ -133,6 +134,15 @@ export default function DocumentAnalyzer() {
               <Label htmlFor="document-type" className="text-lg font-semibold text-primary">Тип документа:</Label>
               <Input id="document-type" value={analysisResult.documentType} readOnly className="mt-2 bg-card border-border p-3 rounded-md shadow-inner text-sm font-medium" />
             </div>
+            {analysisResult.documentDate && (
+              <div>
+                <Label htmlFor="document-date" className="text-lg font-semibold text-primary flex items-center gap-2">
+                  <CalendarDays className="h-5 w-5" />
+                  Дата документа:
+                </Label>
+                <Input id="document-date" value={analysisResult.documentDate} readOnly className="mt-2 bg-card border-border p-3 rounded-md shadow-inner text-sm font-medium" />
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -146,3 +156,4 @@ export default function DocumentAnalyzer() {
     </Card>
   );
 }
+
