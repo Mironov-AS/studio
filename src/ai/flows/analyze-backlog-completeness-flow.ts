@@ -4,7 +4,6 @@
  * @fileOverview Analyzes product backlog items for completeness and suggests content for missing fields.
  * Suggestions for User Story, Goal, and Acceptance Criteria are generated ONLY if the respective field is empty or missing in the input data for that item.
  * The AI bases its suggestions for an item SOLELY on the other available data within that specific item's rowData, without mixing information from other items.
- * Generated suggestions should ONLY contain the formulation for the specific field (User Story, Goal, or Acceptance Criteria) and no other extraneous information.
  * The output array 'analyzedItems' MUST contain an entry for EACH item present in the input 'backlogItemsJsonString'.
  *
  * - analyzeBacklogCompleteness - Function to analyze backlog items.
@@ -63,7 +62,9 @@ const prompt = ai.definePrompt({
   name: 'analyzeBacklogCompletenessPrompt',
   input: {schema: AnalyzeBacklogCompletenessPromptInputSchema}, // Use the schema with pre-stringified JSON
   output: {schema: AnalyzeBacklogCompletenessOutputSchema}, 
-  prompt: `Ты — опытный Product Owner и Agile Coach. Твоя задача — проанализировать список элементов бэклога, представленных как JSON-строка. Каждый объект в этой строке содержит 'id' и 'rowData' (данные строки из Excel).
+  prompt: `Ты — опытный Product Owner и Agile Coach. Твоя задача — проанализировать список элементов бэклога, представленных как JSON-строка. **Ты должен обработать КАЖДЫЙ элемент в этом списке и вернуть результат для КАЖДОГО.**
+
+Каждый объект в JSON-строке \`backlogItemsJsonString\` содержит 'id' и 'rowData' (данные строки из Excel).
 В 'rowData' ищи поля, соответствующие "Пользовательская история", "Цель" и "Критерии приемки" (и их возможные вариации на русском языке, например, "User Story", "Цели", "Критерии готовности").
 
 Для КАЖДОГО элемента из JSON-строки \`backlogItemsJsonString\`:
