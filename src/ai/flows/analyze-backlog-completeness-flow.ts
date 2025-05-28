@@ -124,8 +124,8 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
     }
 
     const analyzedItems: BacklogAnalysisResult[] = [];
-    const MAX_RETRIES_PER_ITEM = 2;
-    const INITIAL_DELAY_MS_PER_ITEM = 1000;
+    const MAX_RETRIES_PER_ITEM = 3; // Increased from 2
+    const INITIAL_DELAY_MS_PER_ITEM = 2000; // Increased from 1000
 
     for (const item of input.backlogItems) {
       let attempt = 0;
@@ -174,7 +174,8 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
         if (currentAttemptFailed) {
           attempt++; // Increment attempt count
           if (attempt < MAX_RETRIES_PER_ITEM) {
-            const delay = INITIAL_DELAY_MS_PER_ITEM * Math.pow(2, attempt -1 ); // attempt-1 for exponential backoff for the *next* attempt
+            // For exponential backoff, the exponent should ideally be based on the number of retries already made
+            const delay = INITIAL_DELAY_MS_PER_ITEM * Math.pow(2, attempt -1 ); // attempt -1 ensures first retry is INITIAL_DELAY, second is INITIAL_DELAY*2, etc.
             console.warn(`Retrying item ${item.id} in ${delay / 1000}s... (Next attempt will be ${attempt + 1}/${MAX_RETRIES_PER_ITEM})`);
             await new Promise(resolve => setTimeout(resolve, delay));
           } else {
