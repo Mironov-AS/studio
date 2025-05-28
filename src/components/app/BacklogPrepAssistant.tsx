@@ -20,7 +20,7 @@ import { Loader2, FileUp, Sparkles, ListChecks, Download, Edit3, Check, XIcon, A
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from "@/lib/utils";
-import { Form } from "@/components/ui/form"; // Added Form import
+import { Form } from "@/components/ui/form"; 
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".xlsx,.xls";
 
@@ -120,7 +120,8 @@ export default function BacklogPrepAssistant() {
     reader.onload = (e) => {
       try {
         const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
+        // Set cellDates to false to prevent Date objects
+        const workbook = XLSX.read(data, { type: 'binary', cellDates: false }); 
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         const jsonData: Record<string, any>[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
@@ -181,7 +182,7 @@ export default function BacklogPrepAssistant() {
 
     const itemsToAnalyze: BacklogItemData[] = rawExcelData.map((row, index) => ({
       id: fields[index]?.id || nanoid(), // Use existing ID if available, or generate new
-      rowData: row,
+      rowData: row, // rowData will now contain strings/numbers/booleans instead of Date objects
     }));
 
     try {
@@ -427,3 +428,6 @@ export default function BacklogPrepAssistant() {
     </div>
   );
 }
+
+
+    
