@@ -16,7 +16,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { analyzeBacklogCompleteness, type AnalyzeBacklogCompletenessInput, type AnalyzeBacklogCompletenessOutput, type BacklogItemData, type BacklogAnalysisResult } from '@/ai/flows/analyze-backlog-completeness-flow';
-import { Loader2, FileUp, Sparkles, ListChecks, Download, Edit3, Check, XIcon, AlertTriangle, TableIcon } from 'lucide-react';
+import { Loader2, FileUp, Sparkles, ListChecks, Download, Edit3, Check, XIcon, AlertTriangle, TableIcon, PlayCircle } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from "@/lib/utils";
@@ -54,11 +54,11 @@ const editableBacklogItemSchema = z.object({
   [USER_STORY_KEY]: z.string().optional(), // Will hold the final editable user story
   [GOAL_KEY]: z.string().optional(),       // Will hold the final editable goal
   [ACCEPTANCE_CRITERIA_KEY]: z.string().optional(), // Will hold the final editable criteria
-  // Store suggestions separately for display, not directly part of the main editable fields
   _suggestedUserStory: z.string().optional(),
   _suggestedGoal: z.string().optional(),
   _suggestedAcceptanceCriteria: z.string().optional(),
   _analysisNotes: z.string().optional(),
+  _analysisPerformed: z.boolean().default(false), // New flag per item
 });
 
 type EditableBacklogItem = z.infer<typeof editableBacklogItemSchema>;
@@ -75,8 +75,8 @@ export default function BacklogPrepAssistant() {
   const [fileName, setFileName] = useState<string | null>(null);
   
   const [isLoadingFile, setIsLoadingFile] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisPerformed, setAnalysisPerformed] = useState(false);
+  const [analyzingRowId, setAnalyzingRowId] = useState<string | null>(null); // ID of the row being analyzed
+  // Removed global analysisPerformed state
 
   const { toast } = useToast();
 
@@ -87,18 +87,17 @@ export default function BacklogPrepAssistant() {
     },
   });
 
-  const { fields, append, replace } = useFieldArray({
+  const { fields, append, replace, update } = useFieldArray({
     control: form.control,
     name: "backlogItems",
   });
 
-  // Helper to identify target columns - case-insensitive and common variations
   const getTargetColumnName = (headers: string[], targetKeys: string[]): string | undefined => {
     for (const header of headers) {
         const lowerHeader = header.toLowerCase().trim();
         for (const key of targetKeys) {
             if (lowerHeader === key.toLowerCase().trim()) {
-                return header; // Return original header name
+                return header;
             }
         }
     }
@@ -119,8 +118,7 @@ export default function BacklogPrepAssistant() {
     if (!file) return;
 
     setIsLoadingFile(true);
-    setAnalysisPerformed(false);
-    form.reset({ backlogItems: [] }); // Clear previous results
+    form.reset({ backlogItems: [] }); 
     setRawExcelData([]);
     setExcelHeaders([]);
     setFileName(file.name);
@@ -132,7 +130,8 @@ export default function BacklogPrepAssistant() {
         const workbook = XLSX.read(data, { type: 'binary', cellDates: false }); 
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
-        const jsonData: Record<string, any>[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        
+        const jsonData: Record<string, any>[] = XLSX.utils.sheet_to_json(worksheet, { defval: "", rawNumbers: false });
 
         if (jsonData.length === 0) {
           toast({ title: "Файл пуст", description: "Загруженный файл не содержит данных.", variant: "destructive" });
@@ -140,7 +139,6 @@ export default function BacklogPrepAssistant() {
           return;
         }
         
-        // Sanitize jsonData to ensure all cell values are primitives (especially strings)
         const sanitizedJsonData = jsonData.map(row => {
           const sanitizedRow: Record<string, any> = {};
           for (const key in row) {
@@ -149,7 +147,7 @@ export default function BacklogPrepAssistant() {
               if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null || value === undefined) {
                 sanitizedRow[key] = value;
               } else {
-                sanitizedRow[key] = String(value); // Convert any other type to string
+                sanitizedRow[key] = String(value);
               }
             }
           }
@@ -161,7 +159,6 @@ export default function BacklogPrepAssistant() {
         setExcelHeaders(headers);
         setRawExcelData(sanitizedJsonData);
 
-        // Initialize form with sanitized data
         const initialFormItems: EditableBacklogItem[] = sanitizedJsonData.map((row, index) => {
             const userStoryColName = getTargetColumnName(headers, [USER_STORY_KEY, 'user story', 'история пользователя']);
             const goalColName = getTargetColumnName(headers, [GOAL_KEY, 'цели', 'goal']);
@@ -178,6 +175,7 @@ export default function BacklogPrepAssistant() {
                 _suggestedGoal: '',
                 _suggestedAcceptanceCriteria: '',
                 _analysisNotes: '',
+                _analysisPerformed: false,
             };
         });
         replace(initialFormItems); 
@@ -197,27 +195,26 @@ export default function BacklogPrepAssistant() {
     reader.readAsBinaryString(file);
   };
 
-  const handleAnalyzeBacklog = async () => {
-    if (rawExcelData.length === 0) {
-      toast({ title: "Нет данных", description: "Сначала загрузите файл Excel с бэклогом.", variant: "destructive" });
+  const handleAnalyzeSingleRow = async (rowIndex: number) => {
+    const formItem = fields[rowIndex];
+    if (!formItem) {
+      toast({ title: "Ошибка", description: "Строка для анализа не найдена.", variant: "destructive" });
       return;
     }
-    setIsAnalyzing(true);
-    setAnalysisPerformed(false);
+    setAnalyzingRowId(formItem.id);
 
-    const itemsToAnalyze: BacklogItemData[] = rawExcelData.map((row, index) => ({
-      id: fields[index]?.id || nanoid(),
-      rowData: row, 
-    }));
+    const itemToAnalyze: BacklogItemData = {
+      id: formItem.id,
+      rowData: formItem.rowData, 
+    };
 
     try {
-      const result: AnalyzeBacklogCompletenessOutput = await analyzeBacklogCompleteness({ backlogItems: itemsToAnalyze });
+      const result: AnalyzeBacklogCompletenessOutput = await analyzeBacklogCompleteness({ backlogItems: [itemToAnalyze] });
       
-      const updatedFormItems = fields.map(formItem => {
-        const aiResult = result.analyzedItems.find(ar => ar.id === formItem.id);
-        if (aiResult) {
-          return {
-            ...formItem,
+      const aiResult = result.analyzedItems.find(ar => ar.id === formItem.id);
+
+      if (aiResult) {
+        const updatedItem: Partial<EditableBacklogItem> = {
             [USER_STORY_KEY]: (formItem[USER_STORY_KEY] || !aiResult.suggestedUserStory) ? formItem[USER_STORY_KEY] : aiResult.suggestedUserStory,
             [GOAL_KEY]: (formItem[GOAL_KEY] || !aiResult.suggestedGoal) ? formItem[GOAL_KEY] : aiResult.suggestedGoal,
             [ACCEPTANCE_CRITERIA_KEY]: (formItem[ACCEPTANCE_CRITERIA_KEY] || !aiResult.suggestedAcceptanceCriteria) ? formItem[ACCEPTANCE_CRITERIA_KEY] : aiResult.suggestedAcceptanceCriteria,
@@ -225,18 +222,20 @@ export default function BacklogPrepAssistant() {
             _suggestedGoal: aiResult.suggestedGoal || '',
             _suggestedAcceptanceCriteria: aiResult.suggestedAcceptanceCriteria || '',
             _analysisNotes: aiResult.analysisNotes || '',
-          };
-        }
-        return formItem;
-      });
-      replace(updatedFormItems);
-      setAnalysisPerformed(true);
-      toast({ title: "Анализ завершен", description: "AI проверил бэклог и предоставил предложения." });
+            _analysisPerformed: true,
+        };
+        update(rowIndex, { ...formItem, ...updatedItem });
+        toast({ title: `Анализ строки ${formItem.originalIndex + 1} завершен`, description: "AI предоставил предложения." });
+      } else {
+        update(rowIndex, { ...formItem, _analysisNotes: "AI не вернул результат для этой строки.", _analysisPerformed: true });
+        toast({ title: `Ошибка анализа строки ${formItem.originalIndex + 1}`, description: "AI не вернул результат.", variant: "destructive" });
+      }
     } catch (error) {
-      console.error("Error analyzing backlog:", error);
-      toast({ title: "Ошибка анализа", description: (error as Error).message, variant: "destructive" });
+      console.error(`Error analyzing row ${formItem.id}:`, error);
+      update(rowIndex, { ...formItem, _analysisNotes: `Ошибка AI: ${(error as Error).message}`, _analysisPerformed: true });
+      toast({ title: `Ошибка анализа строки ${formItem.originalIndex + 1}`, description: (error as Error).message, variant: "destructive" });
     } finally {
-      setIsAnalyzing(false);
+      setAnalyzingRowId(null);
     }
   };
   
@@ -253,14 +252,12 @@ export default function BacklogPrepAssistant() {
     const dataForSheet = itemsToExport.map(item => {
       const exportRow: Record<string, any> = {};
 
-      // Process original rowData, truncating long strings
       for (const key in item.rowData) {
         if (Object.prototype.hasOwnProperty.call(item.rowData, key)) {
           exportRow[key] = truncateString(item.rowData[key], MAX_CELL_LENGTH);
         }
       }
       
-      // Update/add target columns from form state, truncating long strings
       const userStoryColKey = identifiedColumns.userStoryCol || USER_STORY_KEY;
       exportRow[userStoryColKey] = truncateString(item[USER_STORY_KEY], MAX_CELL_LENGTH);
 
@@ -270,8 +267,8 @@ export default function BacklogPrepAssistant() {
       const acColKey = identifiedColumns.acceptanceCriteriaCol || ACCEPTANCE_CRITERIA_KEY;
       exportRow[acColKey] = truncateString(item[ACCEPTANCE_CRITERIA_KEY], MAX_CELL_LENGTH);
 
-      // Add AI suggestion columns if analysis was performed, truncating long strings
-      if (analysisPerformed) {
+      // Add AI suggestion columns if analysis was performed for this item
+      if (item._analysisPerformed) {
         exportRow[SUGGESTED_USER_STORY_COL] = truncateString(item._suggestedUserStory, MAX_CELL_LENGTH);
         exportRow[SUGGESTED_GOAL_COL] = truncateString(item._suggestedGoal, MAX_CELL_LENGTH);
         exportRow[SUGGESTED_ACCEPTANCE_CRITERIA_COL] = truncateString(item._suggestedAcceptanceCriteria, MAX_CELL_LENGTH);
@@ -299,7 +296,6 @@ export default function BacklogPrepAssistant() {
   
   const displayTableHeaders = useMemo(() => {
     let currentHeaders = [...excelHeaders];
-    // Ensure target columns are present in headers if they were not in original file but added by form
     if (!identifiedColumns.userStoryCol && fields.some(f => f[USER_STORY_KEY])) {
         if (!currentHeaders.includes(USER_STORY_KEY)) currentHeaders.push(USER_STORY_KEY);
     }
@@ -310,14 +306,16 @@ export default function BacklogPrepAssistant() {
         if (!currentHeaders.includes(ACCEPTANCE_CRITERIA_KEY)) currentHeaders.push(ACCEPTANCE_CRITERIA_KEY);
     }
 
-    if (analysisPerformed) {
+    // Always include suggestion columns in headers if there's data, as analysis is per row
+    if (fields.length > 0) {
         if (!currentHeaders.includes(SUGGESTED_USER_STORY_COL)) currentHeaders.push(SUGGESTED_USER_STORY_COL);
         if (!currentHeaders.includes(SUGGESTED_GOAL_COL)) currentHeaders.push(SUGGESTED_GOAL_COL);
         if (!currentHeaders.includes(SUGGESTED_ACCEPTANCE_CRITERIA_COL)) currentHeaders.push(SUGGESTED_ACCEPTANCE_CRITERIA_COL);
         if (!currentHeaders.includes(ANALYSIS_NOTES_COL)) currentHeaders.push(ANALYSIS_NOTES_COL);
     }
+    currentHeaders.push("AI Анализ"); // Column for analysis button
     return currentHeaders;
-  }, [excelHeaders, analysisPerformed, fields, identifiedColumns]);
+  }, [excelHeaders, fields, identifiedColumns]);
 
 
   return (
@@ -336,7 +334,7 @@ export default function BacklogPrepAssistant() {
             onChange={handleFileChange}
             accept={ACCEPTABLE_FILE_EXTENSIONS}
             className="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border file:border-input file:text-sm file:font-semibold file:bg-secondary file:text-secondary-foreground hover:file:bg-secondary/80 cursor-pointer"
-            disabled={isLoadingFile || isAnalyzing}
+            disabled={isLoadingFile || !!analyzingRowId}
           />
           {isLoadingFile && <Loader2 className="mt-2 h-5 w-5 animate-spin text-primary" />}
            {fileName && !isLoadingFile && (
@@ -352,25 +350,7 @@ export default function BacklogPrepAssistant() {
           )}
         </CardContent>
       </Card>
-
-      <Button
-        onClick={handleAnalyzeBacklog}
-        disabled={isLoadingFile || isAnalyzing || rawExcelData.length === 0}
-        className="w-full text-lg py-4 rounded-lg"
-      >
-        {isAnalyzing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
-        2. Проанализировать бэклог и получить предложения AI
-      </Button>
       
-      {isAnalyzing && fields.length === 0 && (
-         <Card className="mt-4 shadow-lg rounded-xl">
-          <CardContent className="pt-6 pb-6 text-center">
-            <Loader2 className="mx-auto h-10 w-10 text-primary animate-spin mb-3" />
-            <p className="text-md text-muted-foreground">AI анализирует ваш бэклог... Это может занять некоторое время.</p>
-          </CardContent>
-        </Card>
-      )}
-
       {fields.length > 0 && (
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmitForm)}>
@@ -379,11 +359,11 @@ export default function BacklogPrepAssistant() {
                 <CardTitle className="flex items-center justify-between text-xl">
                   <div className="flex items-center gap-2">
                     <ListChecks className="h-6 w-6 text-accent" />
-                    3. Редактируемый бэклог с предложениями AI
+                    2. Редактируемый бэклог с предложениями AI
                   </div>
                 </CardTitle>
                 <CardDescription>
-                  Просмотрите исходные данные и предложения AI. Вы можете отредактировать поля "{USER_STORY_KEY}", "{GOAL_KEY}" и "{ACCEPTANCE_CRITERIA_KEY}" перед экспортом.
+                  Просмотрите исходные данные. Для получения предложений AI нажмите кнопку "Анализ" в соответствующей строке. Вы можете отредактировать поля "{USER_STORY_KEY}", "{GOAL_KEY}" и "{ACCEPTANCE_CRITERIA_KEY}" перед экспортом.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -401,7 +381,7 @@ export default function BacklogPrepAssistant() {
                     <TableBody>
                       {fields.map((item, index) => (
                         <TableRow key={item.id}>
-                          {excelHeaders.map(header => ( // Iterate over original headers to maintain order and content
+                          {excelHeaders.map(header => ( 
                             <TableCell key={`${item.id}-${header}`} className="text-xs align-top">
                                 {header === (identifiedColumns.userStoryCol || USER_STORY_KEY) ? (
                                     <Controller name={`backlogItems.${index}.${USER_STORY_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={3} className="text-xs"/>} />
@@ -414,23 +394,36 @@ export default function BacklogPrepAssistant() {
                                 )}
                             </TableCell>
                           ))}
-                          {/* Display AI suggestion columns if analysis has been performed */}
-                          {analysisPerformed && (
-                            <>
-                              <TableCell className="text-xs align-top bg-blue-50 border-l border-blue-200">
-                                <Textarea value={item._suggestedUserStory || ''} readOnly rows={3} className="text-xs bg-white" placeholder="Нет предложений"/>
-                              </TableCell>
-                              <TableCell className="text-xs align-top bg-green-50 border-l border-green-200">
-                                 <Textarea value={item._suggestedGoal || ''} readOnly rows={2} className="text-xs bg-white" placeholder="Нет предложений"/>
-                              </TableCell>
-                              <TableCell className="text-xs align-top bg-purple-50 border-l border-purple-200">
-                                <Textarea value={item._suggestedAcceptanceCriteria || ''} readOnly rows={4} className="text-xs bg-white" placeholder="Нет предложений"/>
-                              </TableCell>
-                              <TableCell className="text-xs align-top bg-gray-50 border-l border-gray-200">
-                                <Textarea value={item._analysisNotes || ''} readOnly rows={2} className="text-xs bg-white"/>
-                              </TableCell>
-                            </>
-                          )}
+                          {/* Display AI suggestion columns */}
+                          <TableCell className="text-xs align-top bg-blue-50 border-l border-blue-200">
+                            <Textarea value={item._suggestedUserStory || ''} readOnly rows={3} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
+                          </TableCell>
+                          <TableCell className="text-xs align-top bg-green-50 border-l border-green-200">
+                              <Textarea value={item._suggestedGoal || ''} readOnly rows={2} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
+                          </TableCell>
+                          <TableCell className="text-xs align-top bg-purple-50 border-l border-purple-200">
+                            <Textarea value={item._suggestedAcceptanceCriteria || ''} readOnly rows={4} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
+                          </TableCell>
+                          <TableCell className="text-xs align-top bg-gray-50 border-l border-gray-200">
+                            <Textarea value={item._analysisNotes || ''} readOnly rows={2} className="text-xs bg-white" placeholder={item._analysisPerformed ? "-" : "Нажмите 'Анализ'"}/>
+                          </TableCell>
+                          <TableCell className="text-xs align-top text-center">
+                            <Button 
+                                type="button" 
+                                onClick={() => handleAnalyzeSingleRow(index)} 
+                                disabled={!!analyzingRowId && analyzingRowId !== item.id} 
+                                size="sm"
+                                variant="outline"
+                                className="w-full"
+                            >
+                                {analyzingRowId === item.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <PlayCircle className="h-4 w-4 mr-1" />
+                                )}
+                                Анализ
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -438,11 +431,11 @@ export default function BacklogPrepAssistant() {
                 </ScrollArea>
                  <CardDescription className="mt-2 text-xs">
                     Колонки "{USER_STORY_KEY}", "{GOAL_KEY}", "{ACCEPTANCE_CRITERIA_KEY}" являются редактируемыми.
-                    {analysisPerformed && ` Колонки "${SUGGESTED_USER_STORY_COL}", "${SUGGESTED_GOAL_COL}", "${SUGGESTED_ACCEPTANCE_CRITERIA_COL}" содержат предложения AI и не редактируются напрямую.`}
+                    Колонки с суффиксом "(Предложение AI)" содержат предложения AI и не редактируются напрямую.
                 </CardDescription>
               </CardContent>
               <CardFooter>
-                <Button type="submit" className="w-full" disabled={isAnalyzing || isLoadingFile}>
+                <Button type="submit" className="w-full" disabled={!!analyzingRowId || isLoadingFile}>
                   <Download className="mr-2 h-4 w-4" /> Экспортировать обновленный бэклог в Excel
                 </Button>
               </CardFooter>
@@ -450,11 +443,11 @@ export default function BacklogPrepAssistant() {
           </form>
         </Form>
       )}
-       {rawExcelData.length > 0 && fields.length === 0 && !isAnalyzing && !isLoadingFile && (
+       {rawExcelData.length > 0 && fields.length === 0 && !isLoadingFile && (
          <Card className="mt-4 shadow-lg rounded-xl">
           <CardContent className="pt-6 pb-6 text-center">
             <AlertTriangle className="mx-auto h-10 w-10 text-orange-500 mb-3" />
-            <p className="text-md text-muted-foreground">Бэклог не был проанализирован. Нажмите кнопку "Проанализировать бэклог".</p>
+            <p className="text-md text-muted-foreground">Данные из файла загружены, но таблица бэклога не отображается. Пожалуйста, перезагрузите страницу или попробуйте загрузить файл заново.</p>
           </CardContent>
         </Card>
       )}
