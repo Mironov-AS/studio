@@ -46,6 +46,10 @@ const AnalyzeBacklogCompletenessOutputSchema = z.object({
 });
 export type AnalyzeBacklogCompletenessOutput = z.infer<typeof AnalyzeBacklogCompletenessOutputSchema>;
 
+// Schema for the prompt input, with backlogItems pre-stringified
+const AnalyzeBacklogCompletenessPromptInputSchema = z.object({
+    backlogItemsJsonString: z.string().describe("The backlog items as a JSON string."),
+  });
 
 export async function analyzeBacklogCompleteness(input: AnalyzeBacklogCompletenessInput): Promise<AnalyzeBacklogCompletenessOutput> {
   return analyzeBacklogCompletenessFlow(input);
@@ -53,12 +57,12 @@ export async function analyzeBacklogCompleteness(input: AnalyzeBacklogCompletene
 
 const prompt = ai.definePrompt({
   name: 'analyzeBacklogCompletenessPrompt',
-  input: {schema: AnalyzeBacklogCompletenessInputSchema}, // Input is the array of items
-  output: {schema: AnalyzeBacklogCompletenessOutputSchema}, // Output is also an array of analyzed items
-  prompt: `Ты — опытный Product Owner и Agile Coach. Твоя задача — проанализировать список элементов бэклога, представленных как JSON-объекты. Каждый объект содержит 'id' и 'rowData' (данные строки из Excel).
+  input: {schema: AnalyzeBacklogCompletenessPromptInputSchema}, // Use the schema with pre-stringified JSON
+  output: {schema: AnalyzeBacklogCompletenessOutputSchema}, 
+  prompt: `Ты — опытный Product Owner и Agile Coach. Твоя задача — проанализировать список элементов бэклога, представленных как JSON-строка. Каждый объект в этой строке содержит 'id' и 'rowData' (данные строки из Excel).
 В 'rowData' ищи поля, соответствующие "Пользовательская история", "Цель" и "Критерии приемки" (и их возможные вариации на русском языке, например, "User Story", "Цели", "Критерии готовности").
 
-Для каждого элемента из массива \`backlogItems\`:
+Для каждого элемента из JSON-строки \`backlogItemsJsonString\`:
 1.  Извлеки существующие значения для "Пользовательской истории", "Цели" и "Критериев приемки" из \`rowData\` и помести их в соответствующие поля \`identifiedUserStory\`, \`identifiedGoal\`, \`identifiedAcceptanceCriteria\`. Если поле в \`rowData\` отсутствует или пустое, оставь соответствующее \`identified\` поле пустым.
 2.  Если какое-либо из этих трех полей ("Пользовательская история", "Цель", "Критерии приемки") пустое, отсутствует или очевидно неполное (например, состоит из одного слова, содержит плейсхолдер типа "заполнить позже"), сгенерируй релевантное и краткое предложение для заполнения этого поля на русском языке. Помести эти предложения в поля \`suggestedUserStory\`, \`suggestedGoal\`, \`suggestedAcceptanceCriteria\` соответственно.
 3.  При генерации предложений основывайся на других заполненных полях текущего элемента (\`rowData\`) и, если возможно, на общем контексте других элементов бэклога (если они предоставлены).
@@ -67,7 +71,7 @@ const prompt = ai.definePrompt({
 6.  Убедись, что ВСЕ предложения и комментарии на РУССКОМ ЯЗЫКЕ.
 7.  Сохрани исходный \`id\` элемента в ответном объекте.
 
-Пример входного элемента в массиве \`backlogItems\`:
+Пример входного элемента в JSON-строке \`backlogItemsJsonString\` (представлен здесь как объект для ясности, но в промпт будет передана строка):
 \`\`\`json
 {
   "id": "row_1",
@@ -96,8 +100,8 @@ const prompt = ai.definePrompt({
 }
 \`\`\`
 
-Входные данные (массив backlogItems):
-{{{jsonEncode backlogItems}}}
+Входные данные (JSON-строка backlogItemsJsonString):
+{{{backlogItemsJsonString}}}
 
 Верни результат в виде объекта JSON со свойством "analyzedItems", где "analyzedItems" - это массив обработанных элементов.
 `,
@@ -107,7 +111,7 @@ const prompt = ai.definePrompt({
 const analyzeBacklogCompletenessFlow = ai.defineFlow(
   {
     name: 'analyzeBacklogCompletenessFlow',
-    inputSchema: AnalyzeBacklogCompletenessInputSchema,
+    inputSchema: AnalyzeBacklogCompletenessInputSchema, // Flow input remains the same
     outputSchema: AnalyzeBacklogCompletenessOutputSchema,
   },
   async (input: AnalyzeBacklogCompletenessInput): Promise<AnalyzeBacklogCompletenessOutput> => {
@@ -115,13 +119,19 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
       return { analyzedItems: [] };
     }
 
+    // Prepare payload for the prompt by stringifying backlogItems
+    const promptPayload = {
+      backlogItemsJsonString: JSON.stringify(input.backlogItems),
+    };
+
     const MAX_RETRIES = 2;
     const INITIAL_DELAY_MS = 1000;
     let attempt = 0;
 
     while (attempt < MAX_RETRIES) {
       try {
-        const { output } = await prompt(input);
+        // Pass the stringified payload to the prompt
+        const { output } = await prompt(promptPayload); 
         if (output && output.analyzedItems) {
           // Ensure all original items have a corresponding analyzed item, even if AI fails for some
           const finalAnalyzedItems = input.backlogItems.map(originalItem => {
@@ -168,3 +178,4 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
+
