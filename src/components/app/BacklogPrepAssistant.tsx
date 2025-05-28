@@ -279,9 +279,9 @@ export default function BacklogPrepAssistant() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Обработанный бэклог");
     
-    // Add UTF-8 BOM for Excel to recognize Russian characters correctly
     const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), wbout], { type: "application/octet-stream" });
+    // Use correct MIME type for XLSX and do NOT prepend BOM for binary XLSX files.
+    const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
