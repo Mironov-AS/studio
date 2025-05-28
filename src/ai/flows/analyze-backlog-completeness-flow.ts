@@ -61,10 +61,23 @@ export async function analyzeBacklogCompleteness(input: AnalyzeBacklogCompletene
   try {
     return await analyzeBacklogCompletenessFlow(input);
   } catch (e: any) {
-    const errorMessage = e instanceof Error ? e.message : (typeof e === 'string' ? e : JSON.stringify(e, Object.getOwnPropertyNames(e)));
+    let errorMessage = "Flow execution failed";
+    if (e instanceof Error) {
+      errorMessage += `: ${e.message}`;
+      if (e.stack) {
+        errorMessage += `\nStack: ${e.stack}`; // Include stack trace if available
+      }
+    } else if (typeof e === 'string') {
+      errorMessage += `: ${e}`;
+    } else {
+      try {
+        errorMessage += `: ${JSON.stringify(e, Object.getOwnPropertyNames(e))}`;
+      } catch (stringifyError) {
+        errorMessage += ": Error object could not be stringified.";
+      }
+    }
     console.error(`[analyzeBacklogCompleteness WRAPPER] Unhandled error in flow execution: ${errorMessage}`, e);
-    // Throw a new error with a more consistent message format that includes the original error.
-    throw new Error(`Flow execution failed: ${errorMessage}`);
+    throw new Error(errorMessage);
   }
 }
 
@@ -142,7 +155,7 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
       console.log(`[Flow Item Start] Processing item ${i + 1}/${input.backlogItems.length} (ID: ${item.id})`);
       let attempt = 0;
       let itemProcessedSuccessfully = false;
-      let currentAttemptFailed = false; 
+      let currentAttemptFailed = false;
 
       const promptPayload = {
         id: item.id,
@@ -164,21 +177,33 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
           }
         } catch (e: any) {
           currentAttemptFailed = true;
-          const errorMessage = typeof e.message === 'string' ? e.message : JSON.stringify(e, Object.getOwnPropertyNames(e));
-          console.error(`[Flow Item Error] Error for item ${item.id} on attempt ${attempt + 1}: ${errorMessage}`);
+          let detailedErrorMessage = "Unknown error during item processing";
+          if (e instanceof Error) {
+            detailedErrorMessage = e.message;
+          } else if (typeof e === 'string') {
+            detailedErrorMessage = e;
+          } else {
+            try {
+              detailedErrorMessage = JSON.stringify(e, Object.getOwnPropertyNames(e));
+            } catch (stringifyError) {
+              detailedErrorMessage = "Error object could not be stringified during item processing.";
+            }
+          }
+          console.error(`[Flow Item Error] Error for item ${item.id} on attempt ${attempt + 1}: ${detailedErrorMessage}`);
 
+          const lowerErrorMessage = detailedErrorMessage.toLowerCase();
           const isRetryableError =
-            errorMessage.toLowerCase().includes('503') ||
-            errorMessage.toLowerCase().includes('overloaded') ||
-            errorMessage.toLowerCase().includes('service unavailable') ||
-            errorMessage.toLowerCase().includes('rate limit') ||
-            errorMessage.toLowerCase().includes('resource has been exhausted') ||
-            errorMessage.toLowerCase().includes('deadline exceeded') ||
-            errorMessage.toLowerCase().includes('429');
+            lowerErrorMessage.includes('503') ||
+            lowerErrorMessage.includes('overloaded') ||
+            lowerErrorMessage.includes('service unavailable') ||
+            lowerErrorMessage.includes('rate limit') ||
+            lowerErrorMessage.includes('resource has been exhausted') ||
+            lowerErrorMessage.includes('deadline exceeded') ||
+            lowerErrorMessage.includes('429');
 
           if (!isRetryableError) {
-            console.error(`[Flow Item Error] Non-retryable error for item ${item.id}. Aborting retries for this item.`);
-            break; // Exit retry loop for this item due to non-retryable error
+            console.error(`[Flow Item Error] Non-retryable error for item ${item.id}. Aborting retries for this item. Raw error:`, e);
+            break; 
           }
         }
 
@@ -206,4 +231,3 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
     return { analyzedItems };
   }
 );
-
