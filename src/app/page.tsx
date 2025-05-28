@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList } from 'lucide-react'; // Added FileArchive, SearchCode, ClipboardList
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList, ListTodo } from 'lucide-react'; // Added ListTodo
 
 export default function HomePage() {
   const services = [
@@ -93,6 +93,12 @@ export default function HomePage() {
       description: 'Анализ PDF с результатами брейншторма, генерация бэклога с ICE-оценками и визуализацией.',
       href: '/brainstorm-backlog',
       icon: <ClipboardList className="h-8 w-8" />,
+    },
+    {
+      title: 'Подготовка к БК',
+      description: 'AI-ассистент для проверки полноты бэклога продукта (истории, цели, критерии) и генерации предложений.',
+      href: '/backlog-prep',
+      icon: <ListTodo className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
