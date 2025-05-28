@@ -131,13 +131,31 @@ export default function BacklogPrepAssistant() {
           setIsLoadingFile(false);
           return;
         }
+        
+        // Sanitize jsonData to ensure all cell values are primitives
+        const sanitizedJsonData = jsonData.map(row => {
+          const sanitizedRow: Record<string, any> = {};
+          for (const key in row) {
+            if (Object.prototype.hasOwnProperty.call(row, key)) {
+              const value = row[key];
+              if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null || value === undefined) {
+                sanitizedRow[key] = value;
+              } else {
+                // Convert any other type (e.g., special error objects from xlsx) to string
+                sanitizedRow[key] = String(value);
+              }
+            }
+          }
+          return sanitizedRow;
+        });
 
-        const headers = Object.keys(jsonData[0] || {});
+
+        const headers = Object.keys(sanitizedJsonData[0] || {});
         setExcelHeaders(headers);
-        setRawExcelData(jsonData);
+        setRawExcelData(sanitizedJsonData);
 
-        // Initialize form with raw data
-        const initialFormItems: EditableBacklogItem[] = jsonData.map((row, index) => {
+        // Initialize form with sanitized data
+        const initialFormItems: EditableBacklogItem[] = sanitizedJsonData.map((row, index) => {
             const userStoryColName = getTargetColumnName(headers, [USER_STORY_KEY, 'user story', 'история пользователя']);
             const goalColName = getTargetColumnName(headers, [GOAL_KEY, 'цели', 'goal']);
             const acColName = getTargetColumnName(headers, [ACCEPTANCE_CRITERIA_KEY, 'критерии приемки', 'acceptance criteria', 'критерии готовности']);
@@ -145,7 +163,7 @@ export default function BacklogPrepAssistant() {
             return {
                 id: nanoid(),
                 originalIndex: index,
-                rowData: row,
+                rowData: row, // rowData is now sanitized
                 [USER_STORY_KEY]: userStoryColName ? String(row[userStoryColName] ?? '') : '',
                 [GOAL_KEY]: goalColName ? String(row[goalColName] ?? '') : '',
                 [ACCEPTANCE_CRITERIA_KEY]: acColName ? String(row[acColName] ?? '') : '',
@@ -157,7 +175,7 @@ export default function BacklogPrepAssistant() {
         });
         replace(initialFormItems); // Use replace to set the whole array
 
-        toast({ title: "Файл загружен", description: `"${file.name}" (${jsonData.length} строк) успешно загружен.` });
+        toast({ title: "Файл загружен", description: `"${file.name}" (${sanitizedJsonData.length} строк) успешно загружен.` });
       } catch (error) {
         console.error("Error parsing Excel file:", error);
         toast({ title: "Ошибка парсинга файла", description: "Не удалось обработать файл Excel.", variant: "destructive" });
@@ -182,7 +200,7 @@ export default function BacklogPrepAssistant() {
 
     const itemsToAnalyze: BacklogItemData[] = rawExcelData.map((row, index) => ({
       id: fields[index]?.id || nanoid(), // Use existing ID if available, or generate new
-      rowData: row, // rowData will now contain strings/numbers/booleans instead of Date objects
+      rowData: row, // rowData is already sanitized here
     }));
 
     try {
@@ -428,6 +446,5 @@ export default function BacklogPrepAssistant() {
     </div>
   );
 }
-
 
     
