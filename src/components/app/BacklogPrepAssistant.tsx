@@ -404,11 +404,11 @@ export default function BacklogPrepAssistant() {
                           {excelHeaders.map(header => ( // Iterate over original headers to maintain order and content
                             <TableCell key={`${item.id}-${header}`} className="text-xs align-top">
                                 {header === (identifiedColumns.userStoryCol || USER_STORY_KEY) ? (
-                                    <Controller name={`backlogItems.${index}.${USER_STORY_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} defaultValue={item[USER_STORY_KEY]} rows={3} className="text-xs"/>} />
+                                    <Controller name={`backlogItems.${index}.${USER_STORY_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={3} className="text-xs"/>} />
                                 ) : header === (identifiedColumns.goalCol || GOAL_KEY) ? (
-                                    <Controller name={`backlogItems.${index}.${GOAL_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} defaultValue={item[GOAL_KEY]} rows={2} className="text-xs"/>} />
+                                    <Controller name={`backlogItems.${index}.${GOAL_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={2} className="text-xs"/>} />
                                 ) : header === (identifiedColumns.acceptanceCriteriaCol || ACCEPTANCE_CRITERIA_KEY) ? (
-                                    <Controller name={`backlogItems.${index}.${ACCEPTANCE_CRITERIA_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} defaultValue={item[ACCEPTANCE_CRITERIA_KEY]} rows={4} className="text-xs"/>} />
+                                    <Controller name={`backlogItems.${index}.${ACCEPTANCE_CRITERIA_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={4} className="text-xs"/>} />
                                 ) : (
                                    String(item.rowData[header] ?? '')
                                 )}
@@ -461,3 +461,4 @@ export default function BacklogPrepAssistant() {
     </div>
   );
 }
+
