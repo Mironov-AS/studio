@@ -94,6 +94,16 @@ export default function BacklogPrepAssistant() {
   const [allToggleableColumns, setAllToggleableColumns] = useState<string[]>([]);
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
 
+  const visibleColumnCount = useMemo(() => {
+    return Object.values(columnVisibility).filter(isVisible => isVisible).length;
+  }, [columnVisibility]);
+
+  const tableFontSizeClass = useMemo(() => {
+    if (visibleColumnCount > 12) return 'text-xs';
+    if (visibleColumnCount > 7) return 'text-sm';
+    return 'text-base';
+  }, [visibleColumnCount]);
+
   useEffect(() => {
     if (excelHeaders.length > 0) {
       const newAllToggleable = [...excelHeaders, ...CORE_AI_COLUMNS];
@@ -397,6 +407,7 @@ export default function BacklogPrepAssistant() {
                 </div>
                 <CardDescription>
                   Просмотрите исходные данные. Для получения предложений AI нажмите кнопку "Анализ" в соответствующей строке. Вы можете отредактировать поля "{USER_STORY_KEY}", "{GOAL_KEY}" и "{ACCEPTANCE_CRITERIA_KEY}" перед экспортом.
+                  Количество видимых колонок: {visibleColumnCount}. Шрифт таблицы: {tableFontSizeClass === 'text-xs' ? 'Маленький' : tableFontSizeClass === 'text-sm' ? 'Средний' : 'Обычный'}.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -406,14 +417,23 @@ export default function BacklogPrepAssistant() {
                       <TableRow>
                         {excelHeaders.map(header => 
                           columnVisibility[header] && (
-                            <TableHead key={header} className={
-                              [identifiedColumns.userStoryCol, identifiedColumns.goalCol, identifiedColumns.acceptanceCriteriaCol].includes(header) ? 'min-w-[250px]' : 'min-w-[150px]'
-                            }>{header}</TableHead>
+                            <TableHead 
+                              key={header} 
+                              className={cn(
+                                identifiedColumns.userStoryCol === header || identifiedColumns.goalCol === header || identifiedColumns.acceptanceCriteriaCol === header ? 'min-w-[250px]' : 'min-w-[150px]',
+                                tableFontSizeClass
+                              )}
+                            >
+                              {header}
+                            </TableHead>
                           )
                         )}
                         {CORE_AI_COLUMNS.map(colName => 
                           columnVisibility[colName] && (
-                            <TableHead key={colName} className='min-w-[250px]'>
+                            <TableHead 
+                              key={colName} 
+                              className={cn('min-w-[250px]', tableFontSizeClass)}
+                            >
                               {colName}
                             </TableHead>
                           )
@@ -425,13 +445,13 @@ export default function BacklogPrepAssistant() {
                         <TableRow key={item.id}>
                           {excelHeaders.map(header => ( 
                             columnVisibility[header] && (
-                                <TableCell key={`${item.id}-${header}`} className="text-xs align-top">
+                                <TableCell key={`${item.id}-${header}`} className={cn("align-top", tableFontSizeClass)}>
                                     {header === (identifiedColumns.userStoryCol || USER_STORY_KEY) ? (
-                                        <Controller name={`backlogItems.${index}.${USER_STORY_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={3} className="text-xs"/>} />
+                                        <Controller name={`backlogItems.${index}.${USER_STORY_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={3} className={cn("min-w-[200px]",tableFontSizeClass)}/>} />
                                     ) : header === (identifiedColumns.goalCol || GOAL_KEY) ? (
-                                        <Controller name={`backlogItems.${index}.${GOAL_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={2} className="text-xs"/>} />
+                                        <Controller name={`backlogItems.${index}.${GOAL_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={2} className={cn("min-w-[200px]",tableFontSizeClass)}/>} />
                                     ) : header === (identifiedColumns.acceptanceCriteriaCol || ACCEPTANCE_CRITERIA_KEY) ? (
-                                        <Controller name={`backlogItems.${index}.${ACCEPTANCE_CRITERIA_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={4} className="text-xs"/>} />
+                                        <Controller name={`backlogItems.${index}.${ACCEPTANCE_CRITERIA_KEY}`} control={form.control} render={({ field }) => <Textarea {...field} rows={4} className={cn("min-w-[200px]",tableFontSizeClass)}/>} />
                                     ) : (
                                     String(item.rowData[header] ?? '')
                                     )}
@@ -440,27 +460,27 @@ export default function BacklogPrepAssistant() {
                           ))}
                           {/* Display AI suggestion columns */}
                           {columnVisibility[SUGGESTED_USER_STORY_COL] && (
-                            <TableCell className="text-xs align-top bg-blue-50 border-l border-blue-200">
-                                <Textarea value={item._suggestedUserStory || ''} readOnly rows={3} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
+                            <TableCell className={cn("align-top bg-blue-50 border-l border-blue-200", tableFontSizeClass)}>
+                                <Textarea value={item._suggestedUserStory || ''} readOnly rows={3} className={cn("bg-white min-w-[200px]", tableFontSizeClass)} placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
                             </TableCell>
                           )}
                           {columnVisibility[SUGGESTED_GOAL_COL] && (
-                            <TableCell className="text-xs align-top bg-green-50 border-l border-green-200">
-                                <Textarea value={item._suggestedGoal || ''} readOnly rows={2} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
+                            <TableCell className={cn("align-top bg-green-50 border-l border-green-200", tableFontSizeClass)}>
+                                <Textarea value={item._suggestedGoal || ''} readOnly rows={2} className={cn("bg-white min-w-[200px]", tableFontSizeClass)} placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
                             </TableCell>
                           )}
                           {columnVisibility[SUGGESTED_ACCEPTANCE_CRITERIA_COL] && (
-                            <TableCell className="text-xs align-top bg-purple-50 border-l border-purple-200">
-                                <Textarea value={item._suggestedAcceptanceCriteria || ''} readOnly rows={4} className="text-xs bg-white" placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
+                            <TableCell className={cn("align-top bg-purple-50 border-l border-purple-200", tableFontSizeClass)}>
+                                <Textarea value={item._suggestedAcceptanceCriteria || ''} readOnly rows={4} className={cn("bg-white min-w-[200px]", tableFontSizeClass)} placeholder={item._analysisPerformed ? "Нет предложений" : "Нажмите 'Анализ'"}/>
                             </TableCell>
                           )}
                           {columnVisibility[ANALYSIS_NOTES_COL] && (
-                            <TableCell className="text-xs align-top bg-gray-50 border-l border-gray-200">
-                                <Textarea value={item._analysisNotes || ''} readOnly rows={2} className="text-xs bg-white" placeholder={item._analysisPerformed ? "-" : "Нажмите 'Анализ'"}/>
+                            <TableCell className={cn("align-top bg-gray-50 border-l border-gray-200", tableFontSizeClass)}>
+                                <Textarea value={item._analysisNotes || ''} readOnly rows={2} className={cn("bg-white min-w-[200px]", tableFontSizeClass)} placeholder={item._analysisPerformed ? "-" : "Нажмите 'Анализ'"}/>
                             </TableCell>
                           )}
                           {columnVisibility[ACTION_COL] && (
-                            <TableCell className="text-xs align-top text-center">
+                            <TableCell className={cn("align-top text-center", tableFontSizeClass)}>
                                 <Button 
                                     type="button" 
                                     onClick={() => handleAnalyzeSingleRow(index)} 
@@ -483,7 +503,7 @@ export default function BacklogPrepAssistant() {
                     </TableBody>
                   </Table>
                 </ScrollArea>
-                 <CardDescription className="mt-2 text-xs">
+                 <CardDescription className={cn("mt-2 text-xs", tableFontSizeClass)}>
                     Колонки "{USER_STORY_KEY}", "{GOAL_KEY}", "{ACCEPTANCE_CRITERIA_KEY}" являются редактируемыми.
                     Колонки с префиксом "Предложенн(ая/ые)" содержат предложения AI и не редактируются напрямую.
                 </CardDescription>
