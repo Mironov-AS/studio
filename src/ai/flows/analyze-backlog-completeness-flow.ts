@@ -4,6 +4,7 @@
  * @fileOverview Analyzes product backlog items for completeness and suggests content for missing fields.
  * Suggestions for User Story, Goal, and Acceptance Criteria are generated ONLY if the respective field is empty or missing in the input data for that item.
  * The AI bases its suggestions for an item SOLELY on the other available data within that specific item's rowData, without mixing information from other items.
+ * Generated suggestions should ONLY contain the formulation for the specific field (User Story, Goal, or Acceptance Criteria) and no other extraneous information.
  *
  * - analyzeBacklogCompleteness - Function to analyze backlog items.
  * - AnalyzeBacklogCompletenessInput - Input type.
@@ -33,11 +34,11 @@ export type AnalyzeBacklogCompletenessInput = z.infer<typeof AnalyzeBacklogCompl
 const BacklogAnalysisResultSchema = z.object({
   id: z.string().describe("Уникальный идентификатор исходного элемента бэклога."),
   identifiedUserStory: z.string().optional().describe("Пользовательская история, извлеченная AI из rowData, если найдена. Если поле было изначально пустым, это поле тоже будет пустым."),
-  suggestedUserStory: z.string().optional().describe("Предложенная пользовательская история, если исходная была пустой, неполной или отсутствовала."),
+  suggestedUserStory: z.string().optional().describe("Предложенная формулировка пользовательской истории, если исходная была пустой, неполной или отсутствовала. Предложение должно содержать ТОЛЬКО текст истории."),
   identifiedGoal: z.string().optional().describe("Цель, извлеченная AI из rowData, если найдена."),
-  suggestedGoal: z.string().optional().describe("Предложенная цель, если исходная была пустой, неполной или отсутствовала."),
+  suggestedGoal: z.string().optional().describe("Предложенная формулировка цели, если исходная была пустой, неполной или отсутствовала. Предложение должно содержать ТОЛЬКО текст цели."),
   identifiedAcceptanceCriteria: z.string().optional().describe("Критерии приемки, извлеченные AI из rowData, если найдены."),
-  suggestedAcceptanceCriteria: z.string().optional().describe("Предложенные критерии приемки, если исходные были пустыми, неполными или отсутствовали."),
+  suggestedAcceptanceCriteria: z.string().optional().describe("Предложенная формулировка критериев приемки, если исходные были пустыми, неполными или отсутствовали. Предложение должно содержать ТОЛЬКО текст критериев."),
   analysisNotes: z.string().optional().describe("Краткий комментарий AI о сделанных предложениях или о полноте элемента на русском языке."),
 });
 export type BacklogAnalysisResult = z.infer<typeof BacklogAnalysisResultSchema>;
@@ -66,7 +67,7 @@ const prompt = ai.definePrompt({
 
 Для каждого элемента из JSON-строки \`backlogItemsJsonString\`:
 1.  Извлеки существующие значения для "Пользовательской истории", "Цели" и "Критериев приемки" из \`rowData\` и помести их в соответствующие поля \`identifiedUserStory\`, \`identifiedGoal\`, \`identifiedAcceptanceCriteria\`. Если поле в \`rowData\` отсутствует или пустое, оставь соответствующее \`identified\` поле пустым.
-2.  Если какое-либо из этих трех полей ("Пользовательская история", "Цель", "Критерии приемки") в исходных данных (\`rowData\`) пустое, отсутствует или очевидно неполное (например, состоит из одного слова, содержит плейсхолдер типа "заполнить позже"), сгенерируй релевантное и краткое предложение для заполнения этого поля на русском языке. Помести эти предложения в поля \`suggestedUserStory\`, \`suggestedGoal\`, \`suggestedAcceptanceCriteria\` соответственно.
+2.  Если какое-либо из этих трех полей ("Пользовательская история", "Цель", "Критерии приемки") в исходных данных (\`rowData\`) пустое, отсутствует или очевидно неполное (например, состоит из одного слова, содержит плейсхолдер типа "заполнить позже"), сгенерируй релевантное и краткое предложение для заполнения этого поля на русском языке. Помести эти предложения в поля \`suggestedUserStory\`, \`suggestedGoal\`, \`suggestedAcceptanceCriteria\` соответственно. ВАЖНО: Твои предложения для \`suggestedUserStory\`, \`suggestedGoal\` и \`suggestedAcceptanceCriteria\` должны содержать ТОЛЬКО саму формулировку соответствующего поля (истории, цели или критериев). Не включай в эти предложения никакую другую информацию, такую как сроки реализации, приоритеты, исполнителей и т.п. Предложения должны быть лаконичными и напрямую касаться только недостающего поля.
 3.  При генерации предложений для "Пользовательской истории", "Цели", или "Критериев приемки" для конкретного элемента, основывайся ИСКЛЮЧИТЕЛЬНО на других заполненных полях (\`rowData\`) ЭТОГО ЖЕ САМОГО элемента. НЕ ИСПОЛЬЗУЙ информацию из других элементов бэклога для генерации предложений для полей текущего элемента.
 4.  Если поле ("Пользовательская история", "Цель", "Критерии приемки") уже хорошо заполнено в исходных данных, НЕ НУЖНО генерировать для него предложение (оставь соответствующее \`suggested\` поле пустым).
 5.  Предоставь краткий комментарий \`analysisNotes\` на русском языке для каждого элемента, объясняя, были ли сделаны предложения и почему (например, "Предложена цель, так как исходная была пустой. Пользовательская история и критерии приемки выглядят полными."), или указывая, что элемент выглядит полным и предложений не требуется.
