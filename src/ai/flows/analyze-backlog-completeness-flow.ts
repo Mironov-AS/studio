@@ -61,11 +61,10 @@ export async function analyzeBacklogCompleteness(input: AnalyzeBacklogCompletene
   try {
     return await analyzeBacklogCompletenessFlow(input);
   } catch (e: any) {
-    console.error(`[analyzeBacklogCompleteness WRAPPER] Unhandled error in flow execution: ${JSON.stringify(e, Object.getOwnPropertyNames(e))}`, e);
-    // For "unexpected response", it's often better to rethrow so Next.js can attempt its own error handling/logging.
-    // Or, construct a specific error object if that helps client-side.
-    // throw new Error(`Flow execution failed: ${e.message || 'Unknown error'}`);
-    throw e;
+    const errorMessage = e instanceof Error ? e.message : (typeof e === 'string' ? e : JSON.stringify(e, Object.getOwnPropertyNames(e)));
+    console.error(`[analyzeBacklogCompleteness WRAPPER] Unhandled error in flow execution: ${errorMessage}`, e);
+    // Throw a new error with a more consistent message format that includes the original error.
+    throw new Error(`Flow execution failed: ${errorMessage}`);
   }
 }
 
@@ -143,6 +142,7 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
       console.log(`[Flow Item Start] Processing item ${i + 1}/${input.backlogItems.length} (ID: ${item.id})`);
       let attempt = 0;
       let itemProcessedSuccessfully = false;
+      let currentAttemptFailed = false; 
 
       const promptPayload = {
         id: item.id,
@@ -150,7 +150,7 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
       };
 
       while (attempt < MAX_RETRIES_PER_ITEM && !itemProcessedSuccessfully) {
-        let currentAttemptFailed = false;
+        currentAttemptFailed = false; // Reset for current attempt
         console.log(`[Flow Item Attempt] Item ID ${item.id}, Attempt ${attempt + 1}/${MAX_RETRIES_PER_ITEM}`);
         try {
           const { output } = await analyzeSingleItemPrompt(promptPayload);
@@ -206,3 +206,4 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
     return { analyzedItems };
   }
 );
+
