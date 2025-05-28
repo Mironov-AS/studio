@@ -1,9 +1,11 @@
+
 'use server';
 /**
  * @fileOverview Analyzes product backlog items for completeness and suggests content for missing fields.
  * Suggestions for User Story, Goal, and Acceptance Criteria are generated ONLY if the respective field is empty or missing in the input data for that item.
  * The AI bases its suggestions for an item SOLELY on the other available data within that specific item's rowData, without mixing information from other items.
  * The output array 'analyzedItems' MUST contain an entry for EACH item present in the input 'backlogItems'.
+ * **Ты должен обработать КАЖДЫЙ элемент в этом списке и вернуть результат для КАЖДОГО.**
  *
  * - analyzeBacklogCompleteness - Function to analyze backlog items.
  * - AnalyzeBacklogCompletenessInput - Input type.
@@ -135,6 +137,7 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
       };
 
       while (attempt < MAX_RETRIES_PER_ITEM) {
+        let currentAttemptFailed = false;
         try {
           const { output } = await analyzeSingleItemPrompt(promptPayload);
           if (output) {
@@ -142,13 +145,14 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
             analyzedItems.push({ ...output, id: item.id });
             itemProcessedSuccessfully = true;
             break; // Exit retry loop for this item
-          }
-          // If output is null/undefined but no error, it's an issue, retry
-          if (attempt === MAX_RETRIES_PER_ITEM - 1) {
-            throw new Error(`AI не вернул ожидаемый результат для элемента ${item.id} после нескольких попыток.`);
+          } else {
+            // Output is null/undefined, but no error was thrown.
+            console.warn(`AI returned null/undefined output for item ${item.id} on attempt ${attempt + 1}.`);
+            currentAttemptFailed = true;
           }
         } catch (e: any) {
-          const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : JSON.stringify(e);
+          currentAttemptFailed = true; // Mark as failed if an error is caught
+          const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : JSON.stringify(e, Object.getOwnPropertyNames(e));
           const isRetryableError =
             errorMessage.includes('503') || // Service Unavailable
             errorMessage.includes('overloaded') ||
@@ -159,21 +163,27 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
             errorMessage.includes('429');
 
           if (isRetryableError) {
-            if (attempt === MAX_RETRIES_PER_ITEM - 1) {
-              // Last attempt for this item failed with a retryable error
-              console.warn(`Max retries reached for item ${item.id}. Error: ${e.message}`);
-              break; // Exit retry loop, will add default error item below
-            }
-            const delay = INITIAL_DELAY_MS_PER_ITEM * Math.pow(2, attempt);
-            console.warn(`Retryable error for item ${item.id}. Retrying in ${delay / 1000}s... (Attempt ${attempt + 1}/${MAX_RETRIES_PER_ITEM})`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            console.warn(`Retryable error for item ${item.id} on attempt ${attempt + 1}. Error: ${errorMessage}`);
+            // Will proceed to delay and retry if attempts left
           } else {
             console.error(`Non-retryable error for item ${item.id}:`, e);
-            break; // Exit retry loop, will add default error item below
+            break; // Exit retry loop for this item, itemProcessedSuccessfully remains false
           }
         }
-        attempt++;
-      }
+
+        if (currentAttemptFailed) {
+          attempt++; // Increment attempt count
+          if (attempt < MAX_RETRIES_PER_ITEM) {
+            const delay = INITIAL_DELAY_MS_PER_ITEM * Math.pow(2, attempt -1 ); // attempt-1 for exponential backoff for the *next* attempt
+            console.warn(`Retrying item ${item.id} in ${delay / 1000}s... (Next attempt will be ${attempt + 1}/${MAX_RETRIES_PER_ITEM})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            // Max retries reached after a failed attempt
+            console.warn(`Max retries reached for item ${item.id} after failed attempt ${attempt}.`);
+            break; // Exit retry loop
+          }
+        }
+      } // End of while loop
 
       if (!itemProcessedSuccessfully) {
         analyzedItems.push({
@@ -191,3 +201,4 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
     return { analyzedItems };
   }
 );
+
