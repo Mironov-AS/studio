@@ -65,19 +65,20 @@ export async function analyzeBacklogCompleteness(input: AnalyzeBacklogCompletene
     if (e instanceof Error) {
       errorMessage += `: ${e.message}`;
       if (e.stack) {
-        errorMessage += `\nStack: ${e.stack}`; // Include stack trace if available
+        errorMessage += `\nStack: ${e.stack}`; 
       }
     } else if (typeof e === 'string') {
       errorMessage += `: ${e}`;
     } else {
       try {
+        // Attempt to stringify the full error object for more details
         errorMessage += `: ${JSON.stringify(e, Object.getOwnPropertyNames(e))}`;
       } catch (stringifyError) {
         errorMessage += ": Error object could not be stringified.";
       }
     }
     console.error(`[analyzeBacklogCompleteness WRAPPER] Unhandled error in flow execution: ${errorMessage}`, e);
-    throw new Error(errorMessage);
+    throw new Error(errorMessage); // Re-throw with more details
   }
 }
 
@@ -180,6 +181,9 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
           let detailedErrorMessage = "Unknown error during item processing";
           if (e instanceof Error) {
             detailedErrorMessage = e.message;
+             if (e.stack) {
+                detailedErrorMessage += `\nStack: ${e.stack}`;
+            }
           } else if (typeof e === 'string') {
             detailedErrorMessage = e;
           } else {
@@ -227,7 +231,8 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
         });
       }
     }
-    console.log(`[Flow End] Finished processing. Returning ${analyzedItems.length} items. Analyzed items: ${JSON.stringify(analyzedItems.map(it => ({id: it.id, notes: it.analysisNotes?.substring(0,50)})))}`);
+    console.log(`[Flow End] Finished processing. Returning ${analyzedItems.length} items. Analyzed items summary: ${JSON.stringify(analyzedItems.map(it => ({id: it.id, notesPresent: !!it.analysisNotes, storySuggested: !!it.suggestedUserStory, goalSuggested: !!it.suggestedGoal, acSuggested: !!it.suggestedAcceptanceCriteria })))}`);
     return { analyzedItems };
   }
 );
+
