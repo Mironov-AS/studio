@@ -1,10 +1,9 @@
-
 'use server';
 /**
  * @fileOverview Analyzes product backlog items for completeness and suggests content for missing fields.
  * Suggestions for User Story, Goal, and Acceptance Criteria are generated ONLY if the respective field is empty or missing in the input data for that item.
  * The AI bases its suggestions for an item SOLELY on the other available data within that specific item's rowData, without mixing information from other items.
- * The output array 'analyzedItems' MUST contain an entry for EACH item present in the input 'backlogItemsJsonString'.
+ * The output array 'analyzedItems' MUST contain an entry for EACH item present in the input 'backlogItems'.
  *
  * - analyzeBacklogCompleteness - Function to analyze backlog items.
  * - AnalyzeBacklogCompletenessInput - Input type.
@@ -49,93 +48,64 @@ const AnalyzeBacklogCompletenessOutputSchema = z.object({
 });
 export type AnalyzeBacklogCompletenessOutput = z.infer<typeof AnalyzeBacklogCompletenessOutputSchema>;
 
-// Schema for the prompt input, with backlogItems pre-stringified
-const AnalyzeBacklogCompletenessPromptInputSchema = z.object({
-    backlogItemsJsonString: z.string().describe("The backlog items as a JSON string."),
-  });
+// New schema for the prompt that processes a SINGLE backlog item
+const SingleBacklogItemAnalysisPromptInputSchema = z.object({
+    id: z.string(),
+    rowDataJsonString: z.string().describe("The rowData of a single backlog item as a JSON string."),
+});
 
 export async function analyzeBacklogCompleteness(input: AnalyzeBacklogCompletenessInput): Promise<AnalyzeBacklogCompletenessOutput> {
   return analyzeBacklogCompletenessFlow(input);
 }
 
-const prompt = ai.definePrompt({
-  name: 'analyzeBacklogCompletenessPrompt',
-  input: {schema: AnalyzeBacklogCompletenessPromptInputSchema}, // Use the schema with pre-stringified JSON
-  output: {schema: AnalyzeBacklogCompletenessOutputSchema}, 
-  prompt: `Ты — опытный Product Owner и Agile Coach. Твоя задача — проанализировать список элементов бэклога, представленных как JSON-строка. **Ты должен обработать КАЖДЫЙ элемент в этом списке и вернуть результат для КАЖДОГО.**
+const analyzeSingleItemPrompt = ai.definePrompt({
+  name: 'analyzeSingleBacklogItemPrompt',
+  input: {schema: SingleBacklogItemAnalysisPromptInputSchema},
+  output: {schema: BacklogAnalysisResultSchema}, 
+  prompt: `Ты — опытный Product Owner и Agile Coach. Твоя задача — проанализировать ОДИН элемент бэклога.
+Элемент представлен через 'id' и 'rowDataJsonString' (данные строки из Excel в виде JSON строки).
+В 'rowDataJsonString' (после его мысленного парсинга в объект) ищи поля, соответствующие "Пользовательская история", "Цель" и "Критерии приемки" (и их возможные вариации на русском языке, например, "User Story", "Цели", "Критерии готовности").
 
-Каждый объект в JSON-строке \`backlogItemsJsonString\` содержит 'id' и 'rowData' (данные строки из Excel).
-В 'rowData' ищи поля, соответствующие "Пользовательская история", "Цель" и "Критерии приемки" (и их возможные вариации на русском языке, например, "User Story", "Цели", "Критерии готовности").
-
-Для КАЖДОГО элемента из JSON-строки \`backlogItemsJsonString\`:
-1.  Извлеки существующие значения для "Пользовательской истории", "Цели" и "Критериев приемки" из \`rowData\` и помести их в соответствующие поля \`identifiedUserStory\`, \`identifiedGoal\`, \`identifiedAcceptanceCriteria\`. Если поле в \`rowData\` отсутствует или пустое, оставь соответствующее \`identified\` поле пустым.
-2.  Если какое-либо из этих трех полей ("Пользовательская история", "Цель", "Критерии приемки") в исходных данных (\`rowData\`) пустое, отсутствует или очевидно неполное (например, состоит из одного слова, содержит плейсхолдер типа "заполнить позже"), сгенерируй релевантное и краткое предложение для заполнения этого поля на русском языке. Помести эти предложения в поля \`suggestedUserStory\`, \`suggestedGoal\`, \`suggestedAcceptanceCriteria\` соответственно. ВАЖНО: Твои предложения для \`suggestedUserStory\`, \`suggestedGoal\` и \`suggestedAcceptanceCriteria\` должны содержать ТОЛЬКО саму формулировку соответствующего поля (истории, цели или критериев). Не включай в эти предложения никакую другую информацию, такую как сроки реализации, приоритеты, исполнителей и т.п. Предложения должны быть лаконичными и напрямую касаться только недостающего поля.
-3.  При генерации предложений для "Пользовательской истории", "Цели", или "Критериев приемки" для конкретного элемента, основывайся ИСКЛЮЧИТЕЛЬНО на других заполненных полях (\`rowData\`) ЭТОГО ЖЕ САМОГО элемента. НЕ ИСПОЛЬЗУЙ информацию из других элементов бэклога для генерации предложений для полей текущего элемента.
+Для предоставленного элемента (ID: {{{id}}}):
+1.  Извлеки существующие значения для "Пользовательской истории", "Цели" и "Критериев приемки" из данных в 'rowDataJsonString' и помести их в соответствующие поля \`identifiedUserStory\`, \`identifiedGoal\`, \`identifiedAcceptanceCriteria\`. Если поле в 'rowDataJsonString' отсутствует или пустое, оставь соответствующее \`identified\` поле пустым.
+2.  Если какое-либо из этих трех полей ("Пользовательская история", "Цель", "Критерии приемки") в исходных данных (в 'rowDataJsonString') пустое, отсутствует или очевидно неполное (например, состоит из одного слова, содержит плейсхолдер типа "заполнить позже"), сгенерируй релевантное и краткое предложение для заполнения этого поля на русском языке. Помести эти предложения в поля \`suggestedUserStory\`, \`suggestedGoal\`, \`suggestedAcceptanceCriteria\` соответственно. ВАЖНО: Твои предложения для \`suggestedUserStory\`, \`suggestedGoal\` и \`suggestedAcceptanceCriteria\` должны содержать ТОЛЬКО саму формулировку соответствующего поля (истории, цели или критериев). Не включай в эти предложения никакую другую информацию, такую как сроки реализации, приоритеты, исполнителей и т.п. Предложения должны быть лаконичными и напрямую касаться только недостающего поля.
+3.  При генерации предложений для "Пользовательской истории", "Цели", или "Критериев приемки" для этого элемента, основывайся ИСКЛЮЧИТЕЛЬНО на других заполненных полях в 'rowDataJsonString' ЭТОГО ЖЕ САМОГО элемента.
 4.  Если поле ("Пользовательская история", "Цель", "Критерии приемки") уже хорошо заполнено в исходных данных, НЕ НУЖНО генерировать для него предложение (оставь соответствующее \`suggested\` поле пустым).
-5.  Предоставь краткий комментарий \`analysisNotes\` на русском языке для каждого элемента, объясняя, были ли сделаны предложения и почему (например, "Предложена цель, так как исходная была пустой. Пользовательская история и критерии приемки выглядят полными."), или указывая, что элемент выглядит полным и предложений не требуется.
+5.  Предоставь краткий комментарий \`analysisNotes\` на русском языке, объясняя, были ли сделаны предложения и почему (например, "Предложена цель, так как исходная была пустой. Пользовательская история и критерии приемки выглядят полными."), или указывая, что элемент выглядит полным и предложений не требуется.
 6.  Убедись, что ВСЕ предложения и комментарии на РУССКОМ ЯЗЫКЕ.
-7.  Сохрани исходный \`id\` элемента в ответном объекте.
+7.  Обязательно верни исходный \`id\` элемента (переданный как {{{id}}}) в поле \`id\` ответного JSON объекта.
 
-Пример массива входных элементов в JSON-строке \`backlogItemsJsonString\` (представлен здесь как объект для ясности, но в промпт будет передана строка):
-\`\`\`json
-[
-  {
-    "id": "row_1",
-    "rowData": {
-      "Номер": 1,
-      "Название задачи": "Регистрация нового пользователя",
-      "Пользовательская история": "Как новый пользователь, я хочу зарегистрироваться в системе, чтобы получить доступ к её функциям.",
-      "Цель": "",
-      "Критерии приемки": "1. Форма регистрации открывается. 2. Введенные данные валидируются. 3. Пользователь успешно входит в систему после регистрации.",
-      "Приоритет": "Высокий"
-    }
-  },
-  {
-    "id": "row_2",
-    "rowData": {
-      "Номер": 2,
-      "Название задачи": "Поиск товара",
-      "Пользовательская история": "",
-      "Цель": "Пользователь должен иметь возможность быстро находить товары по названию или категории.",
-      "Критерии приемки": "1. Поисковая строка доступна на главной странице. 2. Результаты поиска релевантны запросу. 3. Фильтрация по категориям работает.",
-      "Приоритет": "Средний"
-    }
-  }
-]
-\`\`\`
-
-Пример ожидаемого массива \`analyzedItems\` для указанного входа:
+Пример JSON строки для 'rowDataJsonString':
 \`\`\`json
 {
-  "analyzedItems": [
-    {
-      "id": "row_1",
-      "identifiedUserStory": "Как новый пользователь, я хочу зарегистрироваться в системе, чтобы получить доступ к её функциям.",
-      "suggestedUserStory": null,
-      "identifiedGoal": null,
-      "suggestedGoal": "Обеспечить возможность новым пользователям создавать учетные записи для доступа к функционалу платформы.",
-      "identifiedAcceptanceCriteria": "1. Форма регистрации открывается. 2. Введенные данные валидируются. 3. Пользователь успешно входит в систему после регистрации.",
-      "suggestedAcceptanceCriteria": null,
-      "analysisNotes": "Предложена цель, так как исходная была пустой. Пользовательская история и критерии приемки выглядят полными."
-    },
-    {
-      "id": "row_2",
-      "identifiedUserStory": null,
-      "suggestedUserStory": "Как покупатель, я хочу легко находить нужные товары, чтобы сэкономить время на покупках.",
-      "identifiedGoal": "Пользователь должен иметь возможность быстро находить товары по названию или категории.",
-      "suggestedGoal": null,
-      "identifiedAcceptanceCriteria": "1. Поисковая строка доступна на главной странице. 2. Результаты поиска релевантны запросу. 3. Фильтрация по категориям работает.",
-      "suggestedAcceptanceCriteria": null,
-      "analysisNotes": "Предложена пользовательская история, т.к. исходная была пустой. Цель и критерии приемки выглядят полными."
-    }
-  ]
+  "Номер": 1,
+  "Название задачи": "Регистрация нового пользователя",
+  "Пользовательская история": "Как новый пользователь, я хочу зарегистрироваться в системе, чтобы получить доступ к её функциям.",
+  "Цель": "",
+  "Критерии приемки": "1. Форма регистрации открывается. 2. Введенные данные валидируются. 3. Пользователь успешно входит в систему после регистрации.",
+  "Приоритет": "Высокий"
 }
 \`\`\`
 
-Входные данные (JSON-строка backlogItemsJsonString):
-{{{backlogItemsJsonString}}}
+Пример ожидаемого JSON объекта для указанной 'rowDataJsonString' и id="row_1":
+\`\`\`json
+{
+  "id": "row_1",
+  "identifiedUserStory": "Как новый пользователь, я хочу зарегистрироваться в системе, чтобы получить доступ к её функциям.",
+  "suggestedUserStory": null,
+  "identifiedGoal": null,
+  "suggestedGoal": "Обеспечить возможность новым пользователям создавать учетные записи для доступа к функционалу платформы.",
+  "identifiedAcceptanceCriteria": "1. Форма регистрации открывается. 2. Введенные данные валидируются. 3. Пользователь успешно входит в систему после регистрации.",
+  "suggestedAcceptanceCriteria": null,
+  "analysisNotes": "Предложена цель, так как исходная была пустой. Пользовательская история и критерии приемки выглядят полными."
+}
+\`\`\`
 
-Верни результат в виде объекта JSON со свойством "analyzedItems". Убедись, что массив "analyzedItems" содержит запись для КАЖДОГО элемента из входного JSON.
+Входные данные для текущего анализа:
+ID: {{{id}}}
+rowDataJsonString: {{{rowDataJsonString}}}
+
+Верни результат в виде ОДНОГО JSON объекта, соответствующего схеме вывода для одного элемента.
 `,
 });
 
@@ -143,7 +113,7 @@ const prompt = ai.definePrompt({
 const analyzeBacklogCompletenessFlow = ai.defineFlow(
   {
     name: 'analyzeBacklogCompletenessFlow',
-    inputSchema: AnalyzeBacklogCompletenessInputSchema, // Flow input remains the same
+    inputSchema: AnalyzeBacklogCompletenessInputSchema,
     outputSchema: AnalyzeBacklogCompletenessOutputSchema,
   },
   async (input: AnalyzeBacklogCompletenessInput): Promise<AnalyzeBacklogCompletenessOutput> => {
@@ -151,63 +121,73 @@ const analyzeBacklogCompletenessFlow = ai.defineFlow(
       return { analyzedItems: [] };
     }
 
-    // Prepare payload for the prompt by stringifying backlogItems
-    const promptPayload = {
-      backlogItemsJsonString: JSON.stringify(input.backlogItems),
-    };
+    const analyzedItems: BacklogAnalysisResult[] = [];
+    const MAX_RETRIES_PER_ITEM = 2;
+    const INITIAL_DELAY_MS_PER_ITEM = 1000;
 
-    const MAX_RETRIES = 2;
-    const INITIAL_DELAY_MS = 1000;
-    let attempt = 0;
+    for (const item of input.backlogItems) {
+      let attempt = 0;
+      let itemProcessedSuccessfully = false;
 
-    while (attempt < MAX_RETRIES) {
-      try {
-        // Pass the stringified payload to the prompt
-        const { output } = await prompt(promptPayload); 
-        if (output && output.analyzedItems) {
-          // Ensure all original items have a corresponding analyzed item, even if AI fails for some
-          const finalAnalyzedItems = input.backlogItems.map(originalItem => {
-            const foundAnalyzed = output.analyzedItems.find(aiItem => aiItem.id === originalItem.id);
-            if (foundAnalyzed) {
-              return foundAnalyzed;
-            }
-            // If AI completely missed an item, return a default structure
-            return {
-              id: originalItem.id,
-              analysisNotes: "AI не смог обработать этот элемент бэклога.",
-            };
-          });
-          return { analyzedItems: finalAnalyzedItems };
-        }
-        if (attempt === MAX_RETRIES - 1) {
-          throw new Error('AI не вернул ожидаемый результат (analyzedItems) после нескольких попыток.');
-        }
-      } catch (e: any) {
-        const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : JSON.stringify(e);
-        const isRetryableError =
-          errorMessage.includes('503') || // Service Unavailable
-          errorMessage.includes('overloaded') ||
-          errorMessage.includes('service unavailable') ||
-          errorMessage.includes('rate limit') ||
-          errorMessage.includes('resource has been exhausted') ||
-          errorMessage.includes('deadline exceeded') ||
-          errorMessage.includes('429');
+      const promptPayload = {
+        id: item.id,
+        rowDataJsonString: JSON.stringify(item.rowData),
+      };
 
-        if (isRetryableError) {
-          if (attempt === MAX_RETRIES - 1) {
-            throw new Error('Сервис временно перегружен или достигнут лимит запросов. Пожалуйста, попробуйте позже.');
+      while (attempt < MAX_RETRIES_PER_ITEM) {
+        try {
+          const { output } = await analyzeSingleItemPrompt(promptPayload);
+          if (output) {
+            // Ensure the returned ID matches the input ID
+            analyzedItems.push({ ...output, id: item.id });
+            itemProcessedSuccessfully = true;
+            break; // Exit retry loop for this item
           }
-          const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
-          console.warn(`Retryable error in analyzeBacklogCompletenessFlow. Retrying in ${delay / 1000}s... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          console.error("Non-retryable error in analyzeBacklogCompletenessFlow:", e);
-          throw e;
+          // If output is null/undefined but no error, it's an issue, retry
+          if (attempt === MAX_RETRIES_PER_ITEM - 1) {
+            throw new Error(`AI не вернул ожидаемый результат для элемента ${item.id} после нескольких попыток.`);
+          }
+        } catch (e: any) {
+          const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : JSON.stringify(e);
+          const isRetryableError =
+            errorMessage.includes('503') || // Service Unavailable
+            errorMessage.includes('overloaded') ||
+            errorMessage.includes('service unavailable') ||
+            errorMessage.includes('rate limit') ||
+            errorMessage.includes('resource has been exhausted') ||
+            errorMessage.includes('deadline exceeded') ||
+            errorMessage.includes('429');
+
+          if (isRetryableError) {
+            if (attempt === MAX_RETRIES_PER_ITEM - 1) {
+              // Last attempt for this item failed with a retryable error
+              console.warn(`Max retries reached for item ${item.id}. Error: ${e.message}`);
+              break; // Exit retry loop, will add default error item below
+            }
+            const delay = INITIAL_DELAY_MS_PER_ITEM * Math.pow(2, attempt);
+            console.warn(`Retryable error for item ${item.id}. Retrying in ${delay / 1000}s... (Attempt ${attempt + 1}/${MAX_RETRIES_PER_ITEM})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            console.error(`Non-retryable error for item ${item.id}:`, e);
+            break; // Exit retry loop, will add default error item below
+          }
         }
+        attempt++;
       }
-      attempt++;
+
+      if (!itemProcessedSuccessfully) {
+        analyzedItems.push({
+          id: item.id,
+          identifiedUserStory: undefined,
+          suggestedUserStory: undefined,
+          identifiedGoal: undefined,
+          suggestedGoal: undefined,
+          identifiedAcceptanceCriteria: undefined,
+          suggestedAcceptanceCriteria: undefined,
+          analysisNotes: `AI не смог обработать этот элемент бэклога (ID: ${item.id}).`,
+        });
+      }
     }
-    throw new Error('Не удалось получить ответ от AI после всех попыток.');
+    return { analyzedItems };
   }
 );
-
