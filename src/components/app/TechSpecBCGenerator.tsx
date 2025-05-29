@@ -11,13 +11,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { generateTechSpecFromBacklog, type GenerateTechSpecFromBacklogOutput } from '@/ai/flows/generateTechSpecFromBacklogFlow';
-import { Loader2, FileUp, Sparkles, FileCog, DownloadCloudIcon } from 'lucide-react';
+import { Loader2, FileUp, Sparkles, FileCog, DownloadCloudIcon, TableIcon } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const ACCEPTABLE_FILE_EXTENSIONS = ".xlsx,.xls";
 
 export default function TechSpecBCGenerator() {
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [backlogDataJsonString, setBacklogDataJsonString] = useState<string | null>(null);
+  const [parsedExcelData, setParsedExcelData] = useState<Record<string, any>[]>([]);
+  const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
   const [generatedTechSpec, setGeneratedTechSpec] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -27,13 +31,17 @@ export default function TechSpecBCGenerator() {
     if (!file) {
       setExcelFile(null);
       setBacklogDataJsonString(null);
+      setParsedExcelData([]);
+      setExcelHeaders([]);
       setGeneratedTechSpec(null);
       return;
     }
 
     setExcelFile(file);
-    setGeneratedTechSpec(null); 
-    setIsLoading(true); 
+    setGeneratedTechSpec(null);
+    setParsedExcelData([]);
+    setExcelHeaders([]);
+    setIsLoading(true);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -49,17 +57,21 @@ export default function TechSpecBCGenerator() {
           setBacklogDataJsonString(null);
           setExcelFile(null);
           setIsLoading(false);
-          event.target.value = ''; // Clear file input
+          event.target.value = ''; 
           return;
         }
+
+        const headers = Object.keys(jsonData[0] || {});
+        setExcelHeaders(headers);
+        setParsedExcelData(jsonData);
         setBacklogDataJsonString(JSON.stringify(jsonData));
-        toast({ title: "Файл загружен", description: `"${file.name}" успешно обработан и готов к генерации ТЗ.` });
+        toast({ title: "Файл загружен", description: `"${file.name}" успешно обработан (${jsonData.length} строк) и готов к генерации ТЗ.` });
       } catch (error) {
         console.error("Error parsing Excel file:", error);
         toast({ title: "Ошибка парсинга файла", description: "Не удалось обработать файл Excel.", variant: "destructive" });
         setBacklogDataJsonString(null);
         setExcelFile(null);
-         event.target.value = ''; // Clear file input
+        event.target.value = '';
       } finally {
         setIsLoading(false);
       }
@@ -68,8 +80,10 @@ export default function TechSpecBCGenerator() {
       toast({ title: "Ошибка чтения файла", variant: "destructive" });
       setExcelFile(null);
       setBacklogDataJsonString(null);
+      setParsedExcelData([]);
+      setExcelHeaders([]);
       setIsLoading(false);
-       event.target.value = ''; // Clear file input
+      event.target.value = '';
     };
     reader.readAsBinaryString(file);
   };
@@ -92,7 +106,7 @@ export default function TechSpecBCGenerator() {
         backlogDataJsonString: backlogDataJsonString,
         fileName: excelFile?.name
       });
-      
+
       if (result.techSpec.startsWith("Ошибка:")) {
         toast({ title: 'Ошибка от AI', description: result.techSpec, variant: 'destructive' });
         setGeneratedTechSpec(null);
@@ -118,7 +132,7 @@ export default function TechSpecBCGenerator() {
       setIsLoading(false);
     }
   };
-  
+
   const handleDownloadTxt = () => {
     if (!generatedTechSpec) {
       toast({ title: "Нет данных для скачивания", variant: "destructive" });
@@ -157,27 +171,71 @@ export default function TechSpecBCGenerator() {
               onChange={handleFileChange}
               accept={ACCEPTABLE_FILE_EXTENSIONS}
               className="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border file:border-input file:text-sm file:font-semibold file:bg-secondary file:text-secondary-foreground hover:file:bg-secondary/80 cursor-pointer"
-              disabled={isLoading && !backlogDataJsonString} // Disable while parsing
+              disabled={isLoading && !backlogDataJsonString} 
             />
             {excelFile && !isLoading && backlogDataJsonString && (
-              <p className="text-sm text-muted-foreground mt-1">Файл: {excelFile.name} ({ (excelFile.size / 1024).toFixed(2) } KB) готов к генерации ТЗ.</p>
+              <p className="text-sm text-muted-foreground mt-1">Файл: {excelFile.name} ({ (excelFile.size / 1024).toFixed(2) } KB, {parsedExcelData.length} строк) готов к генерации ТЗ.</p>
             )}
-             {excelFile && isLoading && !backlogDataJsonString && ( // Show loading during file parse
+            {excelFile && isLoading && !backlogDataJsonString && (
               <p className="text-sm text-muted-foreground mt-1 flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Обработка файла {excelFile.name}...</p>
             )}
           </div>
-          <Button 
-            onClick={handleGenerateSpec} 
-            disabled={isLoading || !backlogDataJsonString} 
-            className="w-full text-base py-3"
-          >
-            {isLoading && generatedTechSpec === null ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
-            Сгенерировать ТЗ для БК
-          </Button>
         </CardContent>
       </Card>
 
-      {isLoading && generatedTechSpec === null && ( // Show this loading state only when AI is working
+      {parsedExcelData.length > 0 && !isLoading && (
+        <Card className="mt-6 shadow-lg rounded-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <TableIcon className="h-6 w-6 text-accent" />
+              Предпросмотр загруженного бэклога
+            </CardTitle>
+            <CardDescription>
+              Первые 50 строк вашего файла. Убедитесь, что данные загрузились корректно.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[400px] w-full border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {excelHeaders.map(header => (
+                      <TableHead key={header} className="whitespace-nowrap">{header}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {parsedExcelData.slice(0, 50).map((row, rowIndex) => (
+                    <TableRow key={rowIndex}>
+                      {excelHeaders.map(header => (
+                        <TableCell key={`${rowIndex}-${header}`} className="text-xs whitespace-nowrap max-w-[200px] overflow-hidden text-ellipsis">
+                          {String(row[header] ?? '')}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+            {parsedExcelData.length > 50 && (
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                Отображены первые 50 строк из {parsedExcelData.length}.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Button
+        onClick={handleGenerateSpec}
+        disabled={isLoading || !backlogDataJsonString}
+        className="w-full text-base py-3"
+      >
+        {isLoading && generatedTechSpec === null ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
+        Сгенерировать ТЗ для БК
+      </Button>
+
+      {isLoading && generatedTechSpec === null && backlogDataJsonString && ( 
         <Card className="mt-6 shadow-lg rounded-xl">
           <CardContent className="pt-6 pb-6 text-center">
             <Loader2 className="mx-auto h-10 w-10 text-primary animate-spin mb-3" />
@@ -211,11 +269,11 @@ export default function TechSpecBCGenerator() {
               placeholder="Техническое задание будет отображено здесь..."
             />
           </CardContent>
-           <CardFooter>
-                <p className="text-xs text-muted-foreground">
-                    Вы можете скопировать текст ТЗ выше или скачать его как .txt файл. Для импорта в Word, просто скопируйте текст.
-                </p>
-            </CardFooter>
+          <CardFooter>
+            <p className="text-xs text-muted-foreground">
+              Вы можете скопировать текст ТЗ выше или скачать его как .txt файл. Для импорта в Word, просто скопируйте текст.
+            </p>
+          </CardFooter>
         </Card>
       )}
     </div>
