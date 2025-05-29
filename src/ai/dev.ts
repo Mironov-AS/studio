@@ -17,4 +17,5 @@ import '@/ai/flows/verify-ddu-flow.ts';
 import '@/ai/flows/chat-with-document-flow.ts';
 import '@/ai/flows/generate-backlog-from-brainstorm-flow.ts';
 import '@/ai/flows/analyze-backlog-completeness-flow.ts';
+import '@/ai/flows/generateTechSpecFromBacklogFlow'; // Added new flow
 

@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList, ListTodo } from 'lucide-react'; // Added ListTodo
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList, ListTodo, FileCog } from 'lucide-react'; // Added FileCog
 
 export default function HomePage() {
   const services = [
@@ -99,6 +99,12 @@ export default function HomePage() {
       description: 'AI-ассистент для проверки полноты бэклога продукта (истории, цели, критерии) и генерации предложений.',
       href: '/backlog-prep',
       icon: <ListTodo className="h-8 w-8" />,
+    },
+    {
+      title: 'Подготовка ТЗ для БК',
+      description: 'Анализ Excel-бэклога и генерация ТЗ для оценки подрядчиком.',
+      href: '/tech-spec-bc',
+      icon: <FileCog className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
