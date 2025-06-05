@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview Extracts events with dates from a document.
@@ -9,7 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import {Buffer} from 'buffer';
+import {Buffer}from 'buffer';
 
 const ExtractDocumentEventsInputSchema = z.object({
   documentDataUri: z
@@ -111,8 +112,8 @@ const extractDocumentEventsFlow = ai.defineFlow(
       throw new Error(`Тип файла '${mimeType}' не поддерживается. Пожалуйста, загрузите файл в формате TXT, PDF или изображение (PNG, JPG, WebP).`);
     }
 
-    const MAX_RETRIES = 3;
-    const INITIAL_DELAY_MS = 1000;
+    const MAX_RETRIES = 4; // Increased from 3
+    const INITIAL_DELAY_MS = 1500; // Increased from 1000
     let attempt = 0;
 
     while (attempt < MAX_RETRIES) {
@@ -127,34 +128,45 @@ const extractDocumentEventsFlow = ai.defineFlow(
         // If !output, and not last attempt, loop will retry.
         // If !output and this is the last attempt:
         if (attempt === MAX_RETRIES - 1) {
+          console.warn(`[extractDocumentEventsFlow] AI returned null/undefined output after ${MAX_RETRIES} attempts for file: ${input.fileName || 'unknown'}.`);
           throw new Error('AI не вернул ожидаемый результат после нескольких попыток.');
         }
 
       } catch (e: any) {
+        // Log the original error for better diagnostics
+        console.error(`[extractDocumentEventsFlow Attempt ${attempt + 1}] Original error for file ${input.fileName || 'unknown'}:`, e);
+        
         const errorMessage = typeof e.message === 'string' ? e.message.toLowerCase() : '';
         const isRetryableError = 
           errorMessage.includes('503') || // Service Unavailable
           errorMessage.includes('overloaded') || // Model Overloaded
           errorMessage.includes('service unavailable') ||
           errorMessage.includes('rate limit') || // Rate limit exceeded
+          errorMessage.includes('resource has been exhausted') || // Specific to Gemini, can be retryable
+          errorMessage.includes('deadline exceeded') || // Specific to Gemini, can be retryable
           errorMessage.includes('429'); // HTTP 429 Too Many Requests
         
         if (isRetryableError) {
           if (attempt === MAX_RETRIES - 1) {
             // Last attempt failed with a retryable error
+            console.error(`[extractDocumentEventsFlow] Max retries (${MAX_RETRIES}) reached for a retryable error. File: ${input.fileName || 'unknown'}. Last error message: ${errorMessage}`);
             throw new Error('Сервис временно перегружен или достигнут лимит запросов. Пожалуйста, попробуйте позже.');
           }
           // Wait before retrying
           const delay = INITIAL_DELAY_MS * Math.pow(2, attempt);
+          console.warn(`[extractDocumentEventsFlow] Retryable error encountered for file ${input.fileName || 'unknown'}. Retrying in ${delay / 1000}s... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           // Non-retryable error
+          console.error(`[extractDocumentEventsFlow] Non-retryable error for file ${input.fileName || 'unknown'}. Error: ${errorMessage}`, e);
           throw e;
         }
       }
       attempt++;
     }
-    // Fallback, should ideally not be reached.
+    // Fallback, should ideally not be reached if logic is perfect.
+    console.error(`[extractDocumentEventsFlow] Failed to get response from AI after all attempts for file: ${input.fileName || 'unknown'}.`);
     throw new Error('Не удалось получить ответ от AI после всех попыток.');
   }
 );
+
