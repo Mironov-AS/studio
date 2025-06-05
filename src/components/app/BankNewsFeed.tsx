@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { cn } from "@/lib/utils"; // Ensure this import is present
 
 const UPDATE_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
