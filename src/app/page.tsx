@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList, ListTodo, FileCog } from 'lucide-react'; // Added FileCog
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList, ListTodo, FileCog, Newspaper } from 'lucide-react'; // Added Newspaper, FileCog
 
 export default function HomePage() {
   const services = [
@@ -105,6 +105,12 @@ export default function HomePage() {
       description: 'Анализ Excel-бэклога и генерация ТЗ для оценки подрядчиком.',
       href: '/tech-spec-bc',
       icon: <FileCog className="h-8 w-8" />,
+    },
+    {
+      title: 'Новостной фон Банка ДОМ.РФ',
+      description: 'Анализ новостей (симуляция), определение тональности и релевантности для Банка ДОМ.РФ.',
+      href: '/bank-news-feed',
+      icon: <Newspaper className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];
