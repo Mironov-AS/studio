@@ -12,6 +12,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
+import { nanoid } from 'nanoid'; // Added for placeholder API integration
 
 // --- Schemas ---
 
@@ -25,7 +26,7 @@ const RawNewsArticleSchema = z.object({
 });
 type RawNewsArticle = z.infer<typeof RawNewsArticleSchema>;
 
-// ProcessedNewsItemSchema is used internally and its type ProcessedNewsItem is exported.
+// ProcessedNewsItemSchema is used internally. Its type ProcessedNewsItem is exported.
 const ProcessedNewsItemSchema = z.object({
   id: z.string(),
   title: z.string().describe("Заголовок новости."),
@@ -53,14 +54,13 @@ const AnalyzeNewsFeedOutputSchema = z.object({
 export type AnalyzeNewsFeedOutput = z.infer<typeof AnalyzeNewsFeedOutputSchema>;
 
 
-// --- Simulated News Fetching Tool ---
+// --- Simulated News Fetching Tool (with placeholders for real API) ---
 
-// Helper to get a somewhat realistic past date string
 const getRandomPastDate = (index: number): string => {
   const date = new Date();
-  date.setDate(date.getDate() - (index % 20 + 1)); // News from the last 20 days
+  date.setDate(date.getDate() - (index % 20 + 1));
   date.setHours(date.getHours() - (index % 24));
-  return date.toISOString().split('T')[0]; // YYYY-MM-DD
+  return date.toISOString().split('T')[0];
 }
 
 const simulatedRawNewsData: RawNewsArticle[] = [
@@ -134,16 +134,69 @@ const simulatedRawNewsData: RawNewsArticle[] = [
 const fetchBankNewsTool = ai.defineTool(
   {
     name: 'fetchBankNewsTool',
-    description: 'Получает последние новости, потенциально связанные с Банком ДОМ.РФ из симулированных источников.',
+    description: 'Получает последние новости, связанные с Банком ДОМ.РФ, используя Яндекс.Новости API (или симуляцию).',
     inputSchema: z.object({
       keywords: z.array(z.string()).optional().default(['Банк ДОМ.РФ', 'ДОМ.РФ']),
       count: z.number().optional().default(10).describe("Количество новостей для получения."),
     }),
     outputSchema: z.array(RawNewsArticleSchema),
   },
-  async (input) => {
-    console.log(`[Tool:fetchBankNewsTool] Simulating news fetch for keywords: ${input.keywords?.join(', ')}, count: ${input.count}`);
-    // Simulate filtering by keywords (rudimentary for this example)
+  async (input): Promise<RawNewsArticle[]> => {
+    console.log(`[Tool:fetchBankNewsTool] Fetching news for keywords: ${input.keywords?.join(', ')}, count: ${input.count}`);
+
+    // --- РЕАЛЬНАЯ ИНТЕГРАЦИЯ С ЯНДЕКС.НОВОСТИ API (ЗАМЕНИТЕ ЭТОТ БЛОК) ---
+    // 1. Получите API ключ для Яндекс.Новостей.
+    // 2. Сохраните его в переменных окружения (например, в .env файле как YANDEX_NEWS_API_KEY).
+    // 3. Установите необходимую библиотеку для HTTP-запросов, если 'fetch' недостаточно (например, 'axios').
+    // 4. Реализуйте HTTP-запрос к API Яндекс.Новостей.
+    // 5. Преобразуйте ответ API в формат RawNewsArticle[].
+
+    const YANDEX_NEWS_API_KEY = process.env.YANDEX_NEWS_API_KEY;
+
+    // Условие для попытки реального вызова API (можно убрать process.env.NODE_ENV !== 'test' для разработки)
+    // if (YANDEX_NEWS_API_KEY && process.env.NODE_ENV !== 'production') { // Пример: не вызываем в продакшене, пока не отлажено
+    if (YANDEX_NEWS_API_KEY) { // Упрощенное условие: если ключ есть, пытаемся вызвать (но код вызова закомментирован)
+      try {
+        // const queryKeywords = input.keywords || ['Банк ДОМ.РФ'];
+        // const query = queryKeywords.join(' OR '); // Пример формирования запроса для API
+        // const count = input.count || 10;
+        // const apiUrl = `https://news.yandex.ru/api/v1/search?query=${encodeURIComponent(query)}&count=${count}&apikey=${YANDEX_NEWS_API_KEY}`; // ПРИМЕРНЫЙ URL! Уточните в документации API.
+
+        // console.log(`[Tool:fetchBankNewsTool] Attempting to call Yandex News API (placeholder): ${apiUrl}`);
+        // // const response = await fetch(apiUrl);
+        // // if (!response.ok) {
+        // //   const errorBody = await response.text();
+        // //   throw new Error(`Yandex News API request failed with status ${response.status}: ${errorBody}`);
+        // // }
+        // // const apiData = await response.json();
+
+        // // // ПРЕОБРАЗОВАНИЕ ДАННЫХ:
+        // // // Это примерная структура, вам нужно будет адаптировать ее под реальный ответ API Яндекс.Новостей.
+        // // const fetchedArticles: RawNewsArticle[] = apiData.items.map((item: any) => ({
+        // //   id: item.id_from_yandex || nanoid(), // Используйте уникальный ID из ответа API или генерируйте
+        // //   title: item.title.text,
+        // //   link: item.url,
+        // //   source: item.source.name,
+        // //   publishDate: new Date(item.publication_date * 1000).toISOString().split('T')[0], // Пример, если дата в секундах Unix
+        // //   fullText: item.passage || item.title.text, // Или другой подходящий текстовый фрагмент
+        // // }));
+        // // console.log(`[Tool:fetchBankNewsTool] Fetched ${fetchedArticles.length} articles from Yandex News API (placeholder).`);
+        // // return fetchedArticles.slice(0, input.count);
+
+        console.warn("[Tool:fetchBankNewsTool] YANDEX_NEWS_API_KEY is present, but actual API call logic is commented out. Falling back to simulated data.");
+        // Если вы раскомментируете реальный вызов, удалите эту строку и блок "НАЧАЛО БЛОКА СИМУЛИРОВАННЫХ ДАННЫХ" ниже.
+      } catch (error) {
+        console.error("[Tool:fetchBankNewsTool] Error during placeholder Yandex News API call:", error);
+        // В случае ошибки с реальным API, можно вернуть пустой массив или последние известные симулированные данные.
+        // return [];
+      }
+    } else if (!YANDEX_NEWS_API_KEY) {
+        console.warn("[Tool:fetchBankNewsTool] YANDEX_NEWS_API_KEY is not set in environment variables. Using simulated news data.");
+    }
+    // --- КОНЕЦ БЛОКА РЕАЛЬНОЙ ИНТЕГРАЦИИ ---
+    
+    // --- НАЧАЛО БЛОКА СИМУЛИРОВАННЫХ ДАННЫХ (удалите или закомментируйте при реальной интеграции, если предыдущий блок раскомментирован и работает) ---
+    console.log("[Tool:fetchBankNewsTool] Using simulated news data as fallback or if API key is not configured/real call not implemented.");
     const lowerCaseKeywords = input.keywords?.map(k => k.toLowerCase());
     
     const filteredNews = simulatedRawNewsData.filter(news => {
@@ -152,16 +205,16 @@ const fetchBankNewsTool = ai.defineTool(
         return lowerCaseKeywords?.some(kw => titleLower.includes(kw) || textLower.includes(kw));
     }).slice(0, input.count);
 
-    // If not enough news specifically about the bank, add some general financial news to make up the count
-    const generalNewsNeeded = (input.count ?? 10) - filteredNews.length; // Use default if input.count is undefined
+    const generalNewsNeeded = (input.count ?? 10) - filteredNews.length;
     if (generalNewsNeeded > 0) {
         const generalNews = simulatedRawNewsData.filter(news => 
             !lowerCaseKeywords?.some(kw => news.title.toLowerCase().includes(kw) || news.fullText.toLowerCase().includes(kw))
         ).slice(0, generalNewsNeeded);
         filteredNews.push(...generalNews);
     }
+    // --- КОНЕЦ БЛОКА СИМУЛИРОВАННЫХ ДАННЫХ ---
     
-    return filteredNews.slice(0, input.count); // Ensure we don't exceed count
+    return filteredNews.slice(0, input.count);
   }
 );
 
@@ -173,8 +226,8 @@ export async function analyzeNewsFeed(input: AnalyzeNewsFeedInput): Promise<Anal
 
 const newsProcessingPrompt = ai.definePrompt({
   name: 'newsProcessingPrompt',
-  input: { schema: RawNewsArticleSchema }, // Process one article at a time
-  output: { schema: ProcessedNewsItemSchema }, // Use the non-exported schema for internal AI guidance
+  input: { schema: RawNewsArticleSchema }, 
+  output: { schema: ProcessedNewsItemSchema }, 
   prompt: `Проанализируй следующую новость. Определи, касается ли она непосредственно Банка ДОМ.РФ или аффилированных с ним структур (например, самого ДОМ.РФ).
 
 Новость для анализа:
@@ -200,8 +253,8 @@ const newsProcessingPrompt = ai.definePrompt({
 const analyzeNewsFeedFlow = ai.defineFlow(
   {
     name: 'analyzeNewsFeedFlow',
-    inputSchema: AnalyzeNewsFeedInputSchema, // Use the non-exported schema
-    outputSchema: AnalyzeNewsFeedOutputSchema, // Use the non-exported schema
+    inputSchema: AnalyzeNewsFeedInputSchema,
+    outputSchema: AnalyzeNewsFeedOutputSchema,
   },
   async (input) => {
     console.log('[analyzeNewsFeedFlow] Started with input:', input);
@@ -219,7 +272,6 @@ const analyzeNewsFeedFlow = ai.defineFlow(
         const { output } = await newsProcessingPrompt(article);
         if (!output) {
           console.warn(`[analyzeNewsFeedFlow] AI returned null output for article ID: ${article.id}. Title: ${article.title}`);
-          // Fallback or skip this article
           return {
              id: article.id,
              title: article.title,
@@ -228,13 +280,13 @@ const analyzeNewsFeedFlow = ai.defineFlow(
              publishDate: article.publishDate,
              link: article.link,
              sentiment: "neutral" as const,
-             isRelevantToBankDomRf: false, // Assume not relevant if processing failed
+             isRelevantToBankDomRf: false, 
           };
         }
         return output;
       } catch (error) {
         console.error(`[analyzeNewsFeedFlow] Error processing article ID ${article.id} (Title: ${article.title}):`, error);
-        return { // Fallback structure on error
+        return { 
              id: article.id,
              title: article.title,
              summary: `Ошибка обработки: ${(error as Error).message}`,
@@ -249,15 +301,9 @@ const analyzeNewsFeedFlow = ai.defineFlow(
 
     const processedNewsItems = await Promise.all(processingPromises);
     
-    // Filter out items that AI marked as not relevant AFTER processing, if desired.
-    // For now, we return all processed items, and client can filter.
     const relevantNews = processedNewsItems.filter(news => news.isRelevantToBankDomRf);
 
-
     console.log(`[analyzeNewsFeedFlow] Finished. Processed ${processedNewsItems.length} articles, found ${relevantNews.length} relevant to Bank DOM.RF.`);
-    return { processedNews: relevantNews }; // Return only relevant news
+    return { processedNews: relevantNews }; 
   }
 );
-
-
-    
