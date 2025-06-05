@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview Analyzes a simulated news feed for items relevant to "Банк ДОМ.РФ",
@@ -10,7 +11,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 
 // --- Schemas ---
 
@@ -24,7 +25,8 @@ const RawNewsArticleSchema = z.object({
 });
 type RawNewsArticle = z.infer<typeof RawNewsArticleSchema>;
 
-export const ProcessedNewsItemSchema = z.object({
+// ProcessedNewsItemSchema is used internally and its type ProcessedNewsItem is exported.
+const ProcessedNewsItemSchema = z.object({
   id: z.string(),
   title: z.string().describe("Заголовок новости."),
   summary: z.string().describe("Краткое содержание новости (2-3 предложения) на русском языке."),
@@ -37,15 +39,15 @@ export const ProcessedNewsItemSchema = z.object({
 });
 export type ProcessedNewsItem = z.infer<typeof ProcessedNewsItemSchema>;
 
-export const AnalyzeNewsFeedInputSchema = z.object({
-  // Currently no specific input, as the tool simulates fetching.
-  // Could add keywords or count in the future if tool becomes real.
+// AnalyzeNewsFeedInputSchema is used internally for the flow. Its type is exported.
+const AnalyzeNewsFeedInputSchema = z.object({
   keywords: z.array(z.string()).optional().default(['Банк ДОМ.РФ', 'ДОМ.РФ']).describe("Ключевые слова для поиска новостей."),
   maxItems: z.number().optional().default(10).describe("Максимальное количество новостей для анализа."),
 });
 export type AnalyzeNewsFeedInput = z.infer<typeof AnalyzeNewsFeedInputSchema>;
 
-export const AnalyzeNewsFeedOutputSchema = z.object({
+// AnalyzeNewsFeedOutputSchema is used internally for the flow. Its type is exported.
+const AnalyzeNewsFeedOutputSchema = z.object({
   processedNews: z.array(ProcessedNewsItemSchema).describe("Список обработанных новостей, релевантных ключевым словам (в первую очередь Банку ДОМ.РФ).")
 });
 export type AnalyzeNewsFeedOutput = z.infer<typeof AnalyzeNewsFeedOutputSchema>;
@@ -151,7 +153,7 @@ const fetchBankNewsTool = ai.defineTool(
     }).slice(0, input.count);
 
     // If not enough news specifically about the bank, add some general financial news to make up the count
-    const generalNewsNeeded = input.count - filteredNews.length;
+    const generalNewsNeeded = (input.count ?? 10) - filteredNews.length; // Use default if input.count is undefined
     if (generalNewsNeeded > 0) {
         const generalNews = simulatedRawNewsData.filter(news => 
             !lowerCaseKeywords?.some(kw => news.title.toLowerCase().includes(kw) || news.fullText.toLowerCase().includes(kw))
@@ -172,7 +174,7 @@ export async function analyzeNewsFeed(input: AnalyzeNewsFeedInput): Promise<Anal
 const newsProcessingPrompt = ai.definePrompt({
   name: 'newsProcessingPrompt',
   input: { schema: RawNewsArticleSchema }, // Process one article at a time
-  output: { schema: ProcessedNewsItemSchema },
+  output: { schema: ProcessedNewsItemSchema }, // Use the non-exported schema for internal AI guidance
   prompt: `Проанализируй следующую новость. Определи, касается ли она непосредственно Банка ДОМ.РФ или аффилированных с ним структур (например, самого ДОМ.РФ).
 
 Новость для анализа:
@@ -198,8 +200,8 @@ const newsProcessingPrompt = ai.definePrompt({
 const analyzeNewsFeedFlow = ai.defineFlow(
   {
     name: 'analyzeNewsFeedFlow',
-    inputSchema: AnalyzeNewsFeedInputSchema,
-    outputSchema: AnalyzeNewsFeedOutputSchema,
+    inputSchema: AnalyzeNewsFeedInputSchema, // Use the non-exported schema
+    outputSchema: AnalyzeNewsFeedOutputSchema, // Use the non-exported schema
   },
   async (input) => {
     console.log('[analyzeNewsFeedFlow] Started with input:', input);
@@ -256,3 +258,6 @@ const analyzeNewsFeedFlow = ai.defineFlow(
     return { processedNews: relevantNews }; // Return only relevant news
   }
 );
+
+
+    
