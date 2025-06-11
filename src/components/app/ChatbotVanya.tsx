@@ -56,7 +56,6 @@ export default function ChatbotVanya() {
         timestamp: new Date(),
       };
 
-      // Simple duplicate check (very basic)
       const existingSimilar = reminders.find(r => 
         !r.isDone &&
         r.task.toLowerCase() === newReminder.task.toLowerCase() &&
@@ -195,9 +194,9 @@ export default function ChatbotVanya() {
       <CardFooter>
         <p className="text-xs text-muted-foreground text-center w-full">
           <Info className="inline h-3 w-3 mr-1" />
-          Напоминания хранятся только в вашем браузере и будут сброшены при перезагрузке страницы.
+          Напоминания хранятся только в вашем браузере и будут сброшены при перезагрузке страницы. 
           Это прототип для демонстрации NLP-возможностей.
-        </P>
+        </p>
       </CardFooter>
     </Card>
   );
