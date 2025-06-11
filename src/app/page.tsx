@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList, ListTodo, FileCog, Newspaper } from 'lucide-react'; // Added Newspaper, FileCog
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList, ListTodo, FileCog, Newspaper, Bot } from 'lucide-react'; // Added Bot, Newspaper, FileCog
 
 export default function HomePage() {
   const services = [
@@ -111,6 +111,12 @@ export default function HomePage() {
       description: 'Анализ новостей (симуляция), определение тональности и релевантности для Банка ДОМ.РФ.',
       href: '/bank-news-feed',
       icon: <Newspaper className="h-8 w-8" />,
+    },
+    {
+      title: 'Чат-бот Ваня (Напоминания)',
+      description: 'AI чат-бот для создания и управления текстовыми напоминаниями (хранение в браузере).',
+      href: '/chatbot-vanya',
+      icon: <Bot className="h-8 w-8" />,
     },
     // Add more services here in the future
   ];

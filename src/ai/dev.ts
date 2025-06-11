@@ -18,4 +18,5 @@ import '@/ai/flows/chat-with-document-flow.ts';
 import '@/ai/flows/generate-backlog-from-brainstorm-flow.ts';
 import '@/ai/flows/analyze-backlog-completeness-flow.ts';
 import '@/ai/flows/generateTechSpecFromBacklogFlow';
-import '@/ai/flows/analyze-news-feed-flow.ts'; // Added new flow
+import '@/ai/flows/analyze-news-feed-flow.ts';
+import '@/ai/flows/process-reminder-request-flow.ts'; // Added new flow
