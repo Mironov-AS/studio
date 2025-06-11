@@ -33,7 +33,7 @@ const ProcessedNewsItemSchema = z.object({
   summary: z.string().describe("Краткое содержание новости (2-3 предложения) на русском языке."),
   source: z.string().describe("Источник новости (например, 'Ведомости', 'РБК')."),
   publishDate: z.string().describe("Дата публикации новости (в формате ГГГГ-ММ-ДД)."),
-  link: z.string().url().optional().describe("Ссылка на оригинальную новость."),
+  link: z.string().optional().describe("Ссылка на оригинальную новость. Может быть невалидным URL, если AI так вернул."), // Changed from .url().optional()
   sentiment: z.enum(["positive", "negative", "neutral"]).describe("Окраска новости: 'positive', 'negative', 'neutral'."),
   negativityReason: z.string().optional().describe("Если новость негативная, краткое пояснение причин негатива (1-2 предложения) на русском языке."),
   isRelevantToBankDomRf: z.boolean().describe("True если новость касается Банка ДОМ.РФ, иначе false."),
@@ -242,7 +242,15 @@ const analyzeNewsFeedFlow = ai.defineFlow(
           };
         }
         // Ensure the output's link matches what was sent, or is undefined if not present in output.
-        return { ...output, link: output.link || article.link };
+        // Also, if AI returns a link, prefer it. If AI returns undefined link, use original article link.
+        let finalLink = output.link; // This is now string | undefined from AI
+        if (finalLink === undefined && article.link) { // If AI gave no link, but original had one
+            finalLink = article.link;
+        }
+        // If finalLink is still a string, we assume it's what we want to show, even if not a perfect URL.
+        // Client side will handle rendering it.
+
+        return { ...output, link: finalLink };
       } catch (error) {
         console.error(`[analyzeNewsFeedFlow] Error processing article ID ${article.id} (Title: ${article.title}):`, error);
         return { 
@@ -267,11 +275,4 @@ const analyzeNewsFeedFlow = ai.defineFlow(
     return { processedNews: relevantNews }; 
   }
 );
-
-// Removed export of Zod schemas, only types and the main function are exported.
-// export { AnalyzeNewsFeedInputSchema, AnalyzeNewsFeedOutputSchema, ProcessedNewsItemSchema };
-// Exporting types is fine:
-// export type { AnalyzeNewsFeedInput, AnalyzeNewsFeedOutput, ProcessedNewsItem };
-// The main function 'analyzeNewsFeed' is already exported.
-
     
