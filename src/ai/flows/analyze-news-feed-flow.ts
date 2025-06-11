@@ -33,23 +33,25 @@ const ProcessedNewsItemSchema = z.object({
   summary: z.string().describe("Краткое содержание новости (2-3 предложения) на русском языке."),
   source: z.string().describe("Источник новости (например, 'Ведомости', 'РБК')."),
   publishDate: z.string().describe("Дата публикации новости (в формате ГГГГ-ММ-ДД)."),
-  link: z.string().optional().describe("Ссылка на оригинальную новость. Может быть невалидным URL, если AI так вернул."), // Changed from .url().optional()
+  link: z.string().optional().describe("Ссылка на оригинальную новость. Может быть невалидным URL, если AI так вернул."),
   sentiment: z.enum(["positive", "negative", "neutral"]).describe("Окраска новости: 'positive', 'negative', 'neutral'."),
   negativityReason: z.string().optional().describe("Если новость негативная, краткое пояснение причин негатива (1-2 предложения) на русском языке."),
   isRelevantToBankDomRf: z.boolean().describe("True если новость касается Банка ДОМ.РФ, иначе false."),
 });
 export type ProcessedNewsItem = z.infer<typeof ProcessedNewsItemSchema>;
 
-const AnalyzeNewsFeedInputSchema = z.object({
+// AnalyzeNewsFeedInputSchema is not exported
+const AnalyzeNewsFeedInputSchemaInternal = z.object({
   keywords: z.array(z.string()).optional().default(['Банк ДОМ.РФ', 'ДОМ.РФ']).describe("Ключевые слова для поиска новостей."),
   maxItems: z.number().optional().default(10).describe("Максимальное количество новостей для анализа."),
 });
-export type AnalyzeNewsFeedInput = z.infer<typeof AnalyzeNewsFeedInputSchema>;
+export type AnalyzeNewsFeedInput = z.infer<typeof AnalyzeNewsFeedInputSchemaInternal>;
 
-const AnalyzeNewsFeedOutputSchema = z.object({
+// AnalyzeNewsFeedOutputSchema is not exported
+const AnalyzeNewsFeedOutputSchemaInternal = z.object({
   processedNews: z.array(ProcessedNewsItemSchema).describe("Список обработанных новостей, релевантных ключевым словам (в первую очередь Банку ДОМ.РФ).")
 });
-export type AnalyzeNewsFeedOutput = z.infer<typeof AnalyzeNewsFeedOutputSchema>;
+export type AnalyzeNewsFeedOutput = z.infer<typeof AnalyzeNewsFeedOutputSchemaInternal>;
 
 
 // --- Simulated News Fetching Tool (with placeholders for real API) ---
@@ -101,28 +103,34 @@ const fetchBankNewsTool = ai.defineTool(
       const feed = await parser.parseURL(YANDEX_RSS_URL);
       console.log(`[Tool:fetchBankNewsTool] Fetched ${feed.items.length} items from Yandex RSS: ${feed.title}`);
       
-      articlesFromRss = feed.items.map(item => {
+      articlesFromRss = feed.items.map((item, index) => {
+        console.log(`[Tool:fetchBankNewsTool] Processing RSS item ${index + 1}: "${item.title}"`);
         let fullText = item.contentSnippet || item.content || item.summary || item.title || '';
-        if (fullText.length > 1000) { // Keep snippets reasonably sized
+        if (fullText.length > 1000) { 
             fullText = fullText.substring(0, 997) + '...';
         }
         
-        let publishDateStr = '';
-        if (item.pubDate) {
-            try {
-                publishDateStr = new Date(item.pubDate).toISOString().split('T')[0];
-            } catch (dateError) {
-                console.warn(`[Tool:fetchBankNewsTool] Could not parse date '${item.pubDate}' for item: ${item.title}. Using current date.`);
+        let publishDateStr: string;
+        try {
+            if (item.pubDate) {
+                const parsedDate = new Date(item.pubDate);
+                if (isNaN(parsedDate.getTime())) { // Check if date is invalid
+                    throw new Error(`Invalid date string: ${item.pubDate}`);
+                }
+                publishDateStr = parsedDate.toISOString().split('T')[0];
+            } else {
+                console.warn(`[Tool:fetchBankNewsTool] Missing pubDate for item: "${item.title}". Using current date.`);
                 publishDateStr = new Date().toISOString().split('T')[0];
             }
-        } else {
+        } catch (dateError: any) {
+            console.warn(`[Tool:fetchBankNewsTool] Could not parse date '${item.pubDate}' for item: "${item.title}". Error: ${dateError.message}. Using current date.`);
             publishDateStr = new Date().toISOString().split('T')[0];
         }
 
         let validLink: string | undefined = undefined;
         if (item.link && typeof item.link === 'string' && item.link.startsWith('http')) {
           try {
-            new URL(item.link); // Validate if it's a proper URL
+            new URL(item.link); 
             validLink = item.link;
           } catch (_) {
             console.warn(`[Tool:fetchBankNewsTool] Invalid URL detected for item '${item.title}': ${item.link}. Link will be omitted.`);
@@ -133,7 +141,7 @@ const fetchBankNewsTool = ai.defineTool(
         return {
           id: item.guid || item.link || nanoid(),
           title: item.title || 'Без заголовка',
-          link: validLink, // Use the validated link or undefined
+          link: validLink,
           source: feed.title || 'Yandex News RSS',
           publishDate: publishDateStr,
           fullText: fullText,
@@ -145,7 +153,6 @@ const fetchBankNewsTool = ai.defineTool(
     } catch (error) {
       console.error("[Tool:fetchBankNewsTool] Error fetching or parsing Yandex RSS feed:", error);
       console.warn("[Tool:fetchBankNewsTool] Falling back to simulated news data due to RSS fetch error.");
-      // Fallback to simulated data on error
       return simulatedRawNewsData.slice(0, input.count);
     }
 
@@ -160,7 +167,6 @@ const fetchBankNewsTool = ai.defineTool(
             return lowerCaseKeywords.some(kw => titleLower.includes(kw) || textLower.includes(kw));
         });
     } else {
-        // If no keywords, return all fetched (up to count)
         filteredNews = articlesFromRss;
     }
     
@@ -208,8 +214,8 @@ const newsProcessingPrompt = ai.definePrompt({
 const analyzeNewsFeedFlow = ai.defineFlow(
   {
     name: 'analyzeNewsFeedFlow',
-    inputSchema: AnalyzeNewsFeedInputSchema,
-    outputSchema: AnalyzeNewsFeedOutputSchema,
+    inputSchema: AnalyzeNewsFeedInputSchemaInternal,
+    outputSchema: AnalyzeNewsFeedOutputSchemaInternal,
   },
   async (input) => {
     console.log('[analyzeNewsFeedFlow] Started with input:', input);
@@ -224,32 +230,28 @@ const analyzeNewsFeedFlow = ai.defineFlow(
 
     const processingPromises = rawArticles.map(async (article) => {
       try {
-        // The 'link' field in 'article' is already optional (string | undefined) from the tool.
-        // RawNewsArticleSchema (input for the prompt) also expects link to be optional.
-        const { output } = await newsProcessingPrompt(article); // Pass article directly
+        console.log(`[analyzeNewsFeedFlow] Processing article ID: ${article.id}, Title: "${article.title}"`);
+        const { output } = await newsProcessingPrompt(article); 
         if (!output) {
           console.warn(`[analyzeNewsFeedFlow] AI returned null output for article ID: ${article.id}. Title: ${article.title}`);
-          // Provide a default fallback structure for items AI failed to process
           return {
              id: article.id,
              title: article.title,
              summary: "Не удалось обработать новость (AI вернул пустой ответ).",
              source: article.source,
              publishDate: article.publishDate,
-             link: article.link, // Pass the potentially undefined link
+             link: article.link, 
              sentiment: "neutral" as const,
              isRelevantToBankDomRf: false, 
           };
         }
-        // Ensure the output's link matches what was sent, or is undefined if not present in output.
-        // Also, if AI returns a link, prefer it. If AI returns undefined link, use original article link.
-        let finalLink = output.link; // This is now string | undefined from AI
-        if (finalLink === undefined && article.link) { // If AI gave no link, but original had one
+        
+        let finalLink = output.link; 
+        if (finalLink === undefined && article.link) { 
             finalLink = article.link;
         }
-        // If finalLink is still a string, we assume it's what we want to show, even if not a perfect URL.
-        // Client side will handle rendering it.
-
+        
+        console.log(`[analyzeNewsFeedFlow] Successfully processed article ID: ${article.id}. Relevant: ${output.isRelevantToBankDomRf}, Sentiment: ${output.sentiment}`);
         return { ...output, link: finalLink };
       } catch (error) {
         console.error(`[analyzeNewsFeedFlow] Error processing article ID ${article.id} (Title: ${article.title}):`, error);
@@ -259,16 +261,15 @@ const analyzeNewsFeedFlow = ai.defineFlow(
              summary: `Ошибка обработки: ${(error as Error).message}`,
              source: article.source,
              publishDate: article.publishDate,
-             link: article.link, // Pass the potentially undefined link
+             link: article.link, 
              sentiment: "neutral" as const,
-             isRelevantToBankDomRf: false, // Assume not relevant if processing failed
+             isRelevantToBankDomRf: false, 
           };
       }
     });
 
     const processedNewsItems = await Promise.all(processingPromises);
     
-    // Filter for relevant news *after* AI processing
     const relevantNews = processedNewsItems.filter(news => news.isRelevantToBankDomRf);
 
     console.log(`[analyzeNewsFeedFlow] Finished. Processed ${processedNewsItems.length} articles from tool, AI found ${relevantNews.length} relevant to Bank DOM.RF.`);
@@ -276,3 +277,4 @@ const analyzeNewsFeedFlow = ai.defineFlow(
   }
 );
     
+
