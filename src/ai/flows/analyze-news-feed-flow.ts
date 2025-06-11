@@ -20,7 +20,7 @@ import Parser from 'rss-parser'; // Added for RSS parsing
 const RawNewsArticleSchema = z.object({
   id: z.string(),
   title: z.string().describe("Original title of the news article."),
-  link: z.string().url().describe("Link to the original news article."),
+  link: z.string().url().optional().describe("Link to the original news article. Can be undefined if not available or invalid."),
   source: z.string().describe("Source of the news (e.g., 'Ведомости', 'РБК', 'Yandex News RSS')."),
   publishDate: z.string().describe("Publication date in YYYY-MM-DD format."),
   fullText: z.string().describe("Full text or a significant snippet/description of the news article for analysis."),
@@ -119,10 +119,21 @@ const fetchBankNewsTool = ai.defineTool(
             publishDateStr = new Date().toISOString().split('T')[0];
         }
 
+        let validLink: string | undefined = undefined;
+        if (item.link && typeof item.link === 'string' && item.link.startsWith('http')) {
+          try {
+            new URL(item.link); // Validate if it's a proper URL
+            validLink = item.link;
+          } catch (_) {
+            console.warn(`[Tool:fetchBankNewsTool] Invalid URL detected for item '${item.title}': ${item.link}. Link will be omitted.`);
+          }
+        }
+
+
         return {
           id: item.guid || item.link || nanoid(),
           title: item.title || 'Без заголовка',
-          link: item.link || '',
+          link: validLink, // Use the validated link or undefined
           source: feed.title || 'Yandex News RSS',
           publishDate: publishDateStr,
           fullText: fullText,
@@ -174,7 +185,11 @@ const newsProcessingPrompt = ai.definePrompt({
 Заголовок: {{{title}}}
 Источник: {{{source}}}
 Дата публикации: {{{publishDate}}}
+{{#if link}}
 Ссылка: {{{link}}}
+{{else}}
+Ссылка: (отсутствует)
+{{/if}}
 Текст:
 {{{fullText}}}
 
@@ -183,7 +198,7 @@ const newsProcessingPrompt = ai.definePrompt({
 2.  summary: Сформируй очень краткое содержание новости (1-2 предложения) на русском языке. Если новость нерелевантна, в содержании укажи "Новость не относится к Банку ДОМ.РФ".
 3.  sentiment: Определи общую тональность новости по отношению к Банку ДОМ.РФ (если она релевантна) или общую тональность новости (если нерелевантна). Возможные значения: "positive", "negative", "neutral".
 4.  negativityReason: Если тональность "negative" И новость релевантна Банку ДОМ.РФ, кратко (1 предложение) поясни, в чем заключается негатив. В остальных случаях оставь это поле пустым.
-5.  Сохрани исходные id, title, source, publishDate, link.
+5.  Сохрани исходные id, title, source, publishDate. Если ссылка (link) была предоставлена, сохрани ее, иначе link должен быть undefined.
 
 Верни результат в JSON-формате, соответствующем ProcessedNewsItemSchema.
 `,
@@ -209,13 +224,9 @@ const analyzeNewsFeedFlow = ai.defineFlow(
 
     const processingPromises = rawArticles.map(async (article) => {
       try {
-        // Ensure link is a valid URL or undefined
-        const articleForPrompt = {
-            ...article,
-            link: (article.link && article.link.startsWith('http')) ? article.link : undefined,
-        };
-
-        const { output } = await newsProcessingPrompt(articleForPrompt as RawNewsArticle);
+        // The 'link' field in 'article' is already optional (string | undefined) from the tool.
+        // RawNewsArticleSchema (input for the prompt) also expects link to be optional.
+        const { output } = await newsProcessingPrompt(article); // Pass article directly
         if (!output) {
           console.warn(`[analyzeNewsFeedFlow] AI returned null output for article ID: ${article.id}. Title: ${article.title}`);
           // Provide a default fallback structure for items AI failed to process
@@ -225,12 +236,13 @@ const analyzeNewsFeedFlow = ai.defineFlow(
              summary: "Не удалось обработать новость (AI вернул пустой ответ).",
              source: article.source,
              publishDate: article.publishDate,
-             link: articleForPrompt.link,
+             link: article.link, // Pass the potentially undefined link
              sentiment: "neutral" as const,
              isRelevantToBankDomRf: false, 
           };
         }
-        return output;
+        // Ensure the output's link matches what was sent, or is undefined if not present in output.
+        return { ...output, link: output.link || article.link };
       } catch (error) {
         console.error(`[analyzeNewsFeedFlow] Error processing article ID ${article.id} (Title: ${article.title}):`, error);
         return { 
@@ -239,7 +251,7 @@ const analyzeNewsFeedFlow = ai.defineFlow(
              summary: `Ошибка обработки: ${(error as Error).message}`,
              source: article.source,
              publishDate: article.publishDate,
-             link: (article.link && article.link.startsWith('http')) ? article.link : undefined,
+             link: article.link, // Pass the potentially undefined link
              sentiment: "neutral" as const,
              isRelevantToBankDomRf: false, // Assume not relevant if processing failed
           };
@@ -256,3 +268,10 @@ const analyzeNewsFeedFlow = ai.defineFlow(
   }
 );
 
+// Removed export of Zod schemas, only types and the main function are exported.
+// export { AnalyzeNewsFeedInputSchema, AnalyzeNewsFeedOutputSchema, ProcessedNewsItemSchema };
+// Exporting types is fine:
+// export type { AnalyzeNewsFeedInput, AnalyzeNewsFeedOutput, ProcessedNewsItem };
+// The main function 'analyzeNewsFeed' is already exported.
+
+    
