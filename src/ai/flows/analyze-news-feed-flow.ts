@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import Parser from 'rss-parser';
 
-// --- Schemas (Simplified for Debugging) ---
+// --- Schemas ---
 
 const RawNewsArticleSchema = z.object({
   id: z.string(),
@@ -23,24 +23,24 @@ const RawNewsArticleSchema = z.object({
   link: z.string().optional().describe("Link to the original news article. Can be undefined if not available or invalid."),
   source: z.string().optional().describe("Source of the news (e.g., 'Ведомости', 'РБК', 'Yandex News RSS')."),
   publishDate: z.string().optional().describe("Publication date in YYYY-MM-DD format."),
-  fullText: z.string().describe("Full text or a significant snippet/description of the news article for analysis."), // Keep required for AI
+  fullText: z.string().describe("Full text or a significant snippet/description of the news article for analysis."),
 });
 type RawNewsArticle = z.infer<typeof RawNewsArticleSchema>;
 
-const ProcessedNewsItemSchema = z.object({
+// Schema for what AI returns (more stringy)
+const ProcessedNewsItemSchemaAI = z.object({
   id: z.string(),
   title: z.string().optional().describe("Заголовок новости."),
-  summary: z.string().describe("Краткое содержание новости (2-3 предложения) на русском языке."), // Keep required
+  summary: z.string().describe("Краткое содержание новости (2-3 предложения) на русском языке."),
   source: z.string().optional().describe("Источник новости (например, 'Ведомости', 'РБК')."),
   publishDate: z.string().optional().describe("Дата публикации новости (в формате ГГГГ-ММ-ДД)."),
-  link: z.string().optional().describe("Ссылка на оригинальную новость. Может быть невалидным URL, если AI так вернул."),
+  link: z.string().optional().describe("Ссылка на оригинальную новость. Может быть невалидным URL или отсутствовать."),
   sentiment: z.string().optional().describe("Окраска новости: 'positive', 'negative', 'neutral' (как строка)."),
   negativityReason: z.string().optional().describe("Если новость негативная, краткое пояснение причин негатива (1-2 предложения) на русском языке."),
   isRelevantToBankDomRf: z.string().optional().describe("Ответ 'да' или 'нет', если новость касается Банка ДОМ.РФ."),
 });
-export type ProcessedNewsItem = z.infer<typeof ProcessedNewsItemSchema>; // This type will be more stringy now
 
-// True ProcessedNewsItem type for client use
+// True ProcessedNewsItem type for client use (stricter types)
 export type ClientProcessedNewsItem = {
   id: string;
   title?: string;
@@ -48,10 +48,23 @@ export type ClientProcessedNewsItem = {
   source?: string;
   publishDate?: string;
   link?: string;
-  sentiment: "positive" | "negative" | "neutral"; // Actual enum for client
+  sentiment: "positive" | "negative" | "neutral";
+  isRelevantToBankDomRf: boolean;
   negativityReason?: string;
-  isRelevantToBankDomRf: boolean; // Actual boolean for client
 };
+
+// Zod Schema for ClientProcessedNewsItem
+const ClientProcessedNewsItemSchema = z.object({
+  id: z.string(),
+  title: z.string().optional(),
+  summary: z.string(),
+  source: z.string().optional(),
+  publishDate: z.string().optional(),
+  link: z.string().optional(),
+  sentiment: z.enum(["positive", "negative", "neutral"]),
+  isRelevantToBankDomRf: z.boolean(),
+  negativityReason: z.string().optional(),
+});
 
 
 const AnalyzeNewsFeedInputSchemaInternal = z.object({
@@ -61,13 +74,14 @@ const AnalyzeNewsFeedInputSchemaInternal = z.object({
 export type AnalyzeNewsFeedInput = z.infer<typeof AnalyzeNewsFeedInputSchemaInternal>;
 
 
-const AnalyzeNewsFeedOutputSchemaInternal = z.object({
-  processedNews: z.array(ProcessedNewsItemSchema) // AI returns this structure
-});
-// For client, we'll transform this to an array of ClientProcessedNewsItem
+// For client, the flow will return an array of ClientProcessedNewsItem
 export type AnalyzeNewsFeedOutput = {
   processedNews: ClientProcessedNewsItem[];
 };
+// The schema for the flow's output, matching AnalyzeNewsFeedOutput
+const AnalyzeNewsFeedOutputSchema = z.object({
+  processedNews: z.array(ClientProcessedNewsItemSchema)
+});
 
 
 // --- Simulated News Fetching Tool (with placeholders for real API) ---
@@ -116,15 +130,15 @@ const fetchBankNewsTool = ai.defineTool(
     let articlesFromRss: RawNewsArticle[] = [];
 
     try {
+      console.log(`[Tool:fetchBankNewsTool] Fetching from URL: ${YANDEX_RSS_URL}`);
       const feed = await parser.parseURL(YANDEX_RSS_URL);
-      console.log(`[Tool:fetchBankNewsTool] Fetched ${feed.items.length} items from Yandex RSS: ${feed.title}`);
+      console.log(`[Tool:fetchBankNewsTool] Fetched ${feed.items.length} items from RSS: ${feed.title}`);
       
       articlesFromRss = feed.items.map((item, index) => {
-        console.log(`[Tool:fetchBankNewsTool] RAW RSS Item ${index + 1}:`, JSON.stringify(item, null, 2));
+        console.log(`[Tool:fetchBankNewsTool] RAW RSS Item ${index + 1}: Title: "${item.title}" Link: "${item.link}" PubDate: "${item.pubDate}"`);
         
-        let fullText = item.contentSnippet || item.content || item.summary || item.title || '';
-        if (typeof fullText !== 'string') fullText = String(fullText); // Ensure fullText is a string
-        if (fullText.length > 1500) { // Increased limit a bit
+        let fullText = String(item.contentSnippet || item.content || item.summary || item.title || '');
+        if (fullText.length > 1500) {
             console.warn(`[Tool:fetchBankNewsTool] Truncating fullText for item: "${item.title}"`);
             fullText = fullText.substring(0, 1497) + '...';
         }
@@ -164,14 +178,14 @@ const fetchBankNewsTool = ai.defineTool(
           publishDate: publishDateStr,
           fullText: fullText,
         };
-        console.log(`[Tool:fetchBankNewsTool] Parsed RawNewsArticle ${index + 1}:`, JSON.stringify(article, null, 2));
+        console.log(`[Tool:fetchBankNewsTool] Parsed RawNewsArticle ${index + 1}: ID: ${article.id}, Title: "${article.title}"`);
         return article;
       });
 
       console.log(`[Tool:fetchBankNewsTool] Successfully parsed ${articlesFromRss.length} articles from RSS.`);
 
     } catch (error: any) {
-      console.error("[Tool:fetchBankNewsTool] Error fetching or parsing Yandex RSS feed:", error.message, error.stack);
+      console.error("[Tool:fetchBankNewsTool] Error fetching or parsing RSS feed:", error.message, error.stack);
       console.warn("[Tool:fetchBankNewsTool] Falling back to simulated news data due to RSS fetch error.");
       return simulatedRawNewsData.slice(0, input.count);
     }
@@ -203,7 +217,7 @@ export async function analyzeNewsFeed(input: AnalyzeNewsFeedInput): Promise<Anal
 const newsProcessingPrompt = ai.definePrompt({
   name: 'newsProcessingPrompt',
   input: { schema: RawNewsArticleSchema }, 
-  output: { schema: ProcessedNewsItemSchema }, 
+  output: { schema: ProcessedNewsItemSchemaAI }, // AI is expected to return stringy fields
   prompt: `Проанализируй следующую новость. Определи, касается ли она непосредственно Банка ДОМ.РФ или аффилированных с ним структур (например, самого ДОМ.РФ).
 
 Новость для анализа:
@@ -219,13 +233,13 @@ const newsProcessingPrompt = ai.definePrompt({
 {{{fullText}}}
 
 Задачи:
-1.  isRelevantToBankDomRf: Ответь "да" если новость релевантна для Банка ДОМ.РФ, иначе "нет". Учитывай упоминания "Банк ДОМ.РФ", "ДОМ.РФ" и их деятельности.
-2.  summary: Сформируй очень краткое содержание новости (1-2 предложения) на русском языке. Если новость нерелевантна, в содержании укажи "Новость не относится к Банку ДОМ.РФ".
+1.  isRelevantToBankDomRf: Ответь СТРОКОЙ "да" если новость релевантна для Банка ДОМ.РФ, иначе СТРОКОЙ "нет". Учитывай упоминания "Банк ДОМ.РФ", "ДОМ.РФ" и их деятельности.
+2.  summary: Сформируй очень краткое содержание новости (1-2 предложения) на русском языке. Если новость нерелевантна, в содержании укажи "Новость не относится к Банку ДОМ.РФ". Это поле ОБЯЗАТЕЛЬНО.
 3.  sentiment: Определи общую тональность новости как СТРОКУ: "positive", "negative" или "neutral".
 4.  negativityReason: Если тональность "negative" И новость релевантна Банку ДОМ.РФ, кратко (1 предложение) поясни, в чем заключается негатив. В остальных случаях оставь это поле пустым.
 5.  Сохрани исходные id, title, source, publishDate. Если ссылка (link) была предоставлена, сохрани ее, иначе link должен быть undefined.
 
-Верни результат в JSON-формате, соответствующем ProcessedNewsItemSchema.
+Верни результат в JSON-формате, соответствующем ProcessedNewsItemSchemaAI.
 ID: {{{id}}}
 `,
 });
@@ -235,9 +249,9 @@ const analyzeNewsFeedFlow = ai.defineFlow(
   {
     name: 'analyzeNewsFeedFlow',
     inputSchema: AnalyzeNewsFeedInputSchemaInternal,
-    outputSchema: AnalyzeNewsFeedOutputSchemaInternal, // AI returns this structure
+    outputSchema: AnalyzeNewsFeedOutputSchema, // Flow returns the client-facing structure
   },
-  async (input): Promise<AnalyzeNewsFeedOutput> => { // Flow returns the client-facing structure
+  async (input): Promise<AnalyzeNewsFeedOutput> => {
     console.log('[analyzeNewsFeedFlow] Started with input:', JSON.stringify(input));
     
     const rawArticles = await fetchBankNewsTool({keywords: input.keywords, count: input.maxItems});
@@ -251,53 +265,54 @@ const analyzeNewsFeedFlow = ai.defineFlow(
     const processingPromises = rawArticles.map(async (article) => {
       try {
         console.log(`[analyzeNewsFeedFlow] Processing article ID: ${article.id}, Title: "${article.title}"`);
-        console.log(`[analyzeNewsFeedFlow] Article data being sent to prompt:`, JSON.stringify(article));
+        console.log(`[analyzeNewsFeedFlow] Article data being sent to prompt:`, JSON.stringify(article, null, 2));
         
         const { output: aiOutput } = await newsProcessingPrompt(article); 
         
-        console.log(`[analyzeNewsFeedFlow] Raw AI Output for article ID ${article.id}:`, JSON.stringify(aiOutput));
+        console.log(`[analyzeNewsFeedFlow] Raw AI Output for article ID ${article.id}:`, JSON.stringify(aiOutput, null, 2));
 
-        if (!aiOutput) {
-          console.warn(`[analyzeNewsFeedFlow] AI returned null output for article ID: ${article.id}. Title: ${article.title}`);
-          // Construct a ClientProcessedNewsItem with error state
+        if (!aiOutput || !aiOutput.summary) { // Check if summary is present
+          console.warn(`[analyzeNewsFeedFlow] AI returned null output or missing summary for article ID: ${article.id}. Title: ${article.title}`);
           return {
-             id: article.id,
-             title: article.title,
-             summary: "Не удалось обработать новость (AI вернул пустой ответ).",
+             id: article.id || nanoid(),
+             title: article.title || "Заголовок отсутствует",
+             summary: "Не удалось обработать новость (AI вернул неполный или пустой ответ).",
              source: article.source,
              publishDate: article.publishDate,
              link: article.link, 
              sentiment: "neutral" as const,
              isRelevantToBankDomRf: false, 
+             negativityReason: undefined,
           } as ClientProcessedNewsItem;
         }
         
         // Transform AI string output to client-expected types
         const clientItem: ClientProcessedNewsItem = {
-            id: aiOutput.id || article.id, // Prefer AI's ID if it returns one, fallback to original
+            id: aiOutput.id || article.id || nanoid(),
             title: aiOutput.title || article.title,
             summary: aiOutput.summary, // summary is required
             source: aiOutput.source || article.source,
             publishDate: aiOutput.publishDate || article.publishDate,
             link: aiOutput.link || article.link,
             sentiment: (aiOutput.sentiment === "positive" || aiOutput.sentiment === "negative") ? aiOutput.sentiment : "neutral",
-            negativityReason: aiOutput.negativityReason,
             isRelevantToBankDomRf: (aiOutput.isRelevantToBankDomRf || '').toLowerCase() === "да",
+            negativityReason: aiOutput.negativityReason,
         };
         
-        console.log(`[analyzeNewsFeedFlow] Successfully processed and transformed article ID: ${article.id}. Relevant: ${clientItem.isRelevantToBankDomRf}, Sentiment: ${clientItem.sentiment}`);
+        console.log(`[analyzeNewsFeedFlow] Successfully processed and transformed article ID: ${clientItem.id}. Relevant: ${clientItem.isRelevantToBankDomRf}, Sentiment: ${clientItem.sentiment}`);
         return clientItem;
       } catch (error: any) {
         console.error(`[analyzeNewsFeedFlow] Error processing article ID ${article.id} (Title: ${article.title}):`, error.message, error.stack);
         return { 
-             id: article.id,
-             title: article.title,
+             id: article.id || nanoid(),
+             title: article.title || "Заголовок отсутствует",
              summary: `Ошибка обработки: ${error.message}`,
              source: article.source,
              publishDate: article.publishDate,
              link: article.link, 
              sentiment: "neutral" as const,
              isRelevantToBankDomRf: false, 
+             negativityReason: undefined,
           } as ClientProcessedNewsItem;
       }
     });
@@ -311,3 +326,4 @@ const analyzeNewsFeedFlow = ai.defineFlow(
   }
 );
     
+
