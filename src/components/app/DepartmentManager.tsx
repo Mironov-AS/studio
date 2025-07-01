@@ -23,7 +23,7 @@ import { findSimilarTasks, FindSimilarTasksOutput } from '@/ai/flows/find-simila
 import { chatWithBacklog, ChatWithBacklogOutput } from '@/ai/flows/chat-with-backlog-flow';
 import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit, FileText, User, Users, CalendarDays, Goal, TrendingUp, Notebook, Trash2, Percent, UserCheck, Lightbulb } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Cell } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, Legend, Cell } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -806,7 +806,7 @@ export default function DepartmentManager() {
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
-                                    <Tooltip content={<ChartTooltipContent hideLabel />} />
+                                    <RechartsTooltip content={<ChartTooltipContent hideLabel />} />
                                     <Legend />
                                 </PieChart>
                             </ResponsiveContainer>
@@ -821,7 +821,7 @@ export default function DepartmentManager() {
                                     <BarChart data={stats.goalData} layout="vertical" margin={{ left: 50 }}>
                                          <XAxis type="number" hide />
                                         <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 10}}/>
-                                        <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent hideLabel />}/>
+                                        <RechartsTooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent hideLabel />}/>
                                         <Bar dataKey="value" fill="hsl(var(--secondary))" radius={4}/>
                                     </BarChart>
                                 </ResponsiveContainer>
