@@ -20,7 +20,7 @@ import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { findSimilarTasks, FindSimilarTasksOutput } from '@/ai/flows/find-similar-tasks-flow';
 import { chatWithBacklog, ChatWithBacklogOutput } from '@/ai/flows/chat-with-backlog-flow';
-import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon } from 'lucide-react';
+import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Cell } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -127,7 +127,8 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 export default function DepartmentManager() {
   const [orders, setOrders] = useState<Order[]>(mockOrders);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
   // AI States
   const [isCheckingForDuplicates, setIsCheckingForDuplicates] = useState(false);
   const [similarTasksInfo, setSimilarTasksInfo] = useState<FindSimilarTasksOutput | null>(null);
@@ -147,6 +148,20 @@ export default function DepartmentManager() {
       dueDate: '',
     },
   });
+
+  useEffect(() => {
+    if (isFormOpen && editingOrder) {
+      form.reset({
+        name: editingOrder.name,
+        description: editingOrder.description,
+        currentOwnerId: editingOrder.currentOwner.id,
+        strategicGoalId: editingOrder.strategicGoal.id,
+        dueDate: editingOrder.dueDate,
+      });
+    } else {
+      form.reset();
+    }
+  }, [isFormOpen, editingOrder, form]);
   
   // ---- Statistics Calculation ----
   const stats = useMemo(() => {
@@ -173,17 +188,52 @@ export default function DepartmentManager() {
   }, [orders]);
 
 
-  const updateIceScore = (index: number, field: 'influence' | 'confidence' | 'effort', value: number) => {
+  const updateIceScore = (orderId: string, field: 'influence' | 'confidence' | 'effort', value: number) => {
     setOrders(prevOrders => {
       const newOrders = [...prevOrders];
-      const order = { ...newOrders[index], [field]: value };
+      const orderIndex = newOrders.findIndex(o => o.id === orderId);
+      if (orderIndex === -1) return prevOrders;
+      
+      const order = { ...newOrders[orderIndex], [field]: value };
       order.iceScore = order.influence * order.confidence * order.effort;
-      newOrders[index] = order;
+      newOrders[orderIndex] = order;
       return newOrders;
     });
   };
 
+  const handleOpenNewOrderForm = () => {
+    setEditingOrder(null);
+    setIsFormOpen(true);
+  };
+  
+  const handleOpenEditOrderForm = (order: Order) => {
+    setEditingOrder(order);
+    setIsFormOpen(true);
+  };
+
   const handleFormSubmit = async (data: OrderFormValues) => {
+    if (editingOrder) {
+      // Logic for updating an existing order
+      setOrders(prevOrders =>
+        prevOrders.map(o =>
+          o.id === editingOrder.id
+            ? {
+                ...o,
+                name: data.name,
+                description: data.description,
+                currentOwner: mockEmployees.find(e => e.id === data.currentOwnerId)!,
+                strategicGoal: mockStrategicGoals.find(g => g.id === data.strategicGoalId)!,
+                dueDate: data.dueDate,
+              }
+            : o
+        )
+      );
+      toast({ title: "Заказ успешно обновлен" });
+      resetAndCloseForm();
+      return;
+    }
+    
+    // Logic for creating a new order
     setIsCheckingForDuplicates(true);
     setSimilarTasksInfo(null);
     try {
@@ -249,6 +299,7 @@ export default function DepartmentManager() {
   const resetAndCloseForm = () => {
     form.reset();
     setSimilarTasksInfo(null);
+    setEditingOrder(null);
     setIsFormOpen(false);
   }
 
@@ -315,12 +366,14 @@ export default function DepartmentManager() {
               <Button onClick={exportToXLSX} variant="outline"><Download className="mr-2 h-4 w-4"/> Экспорт в XLSX</Button>
               <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
-                  <Button><PlusCircle className="mr-2 h-4 w-4"/>Новый заказ</Button>
+                  <Button onClick={handleOpenNewOrderForm}><PlusCircle className="mr-2 h-4 w-4"/>Новый заказ</Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[625px]">
                   <DialogHeader>
-                    <DialogTitle>Создание нового заказа</DialogTitle>
-                    <DialogDescription>Заполните информацию о новом проекте или задаче.</DialogDescription>
+                    <DialogTitle>{editingOrder ? 'Редактирование заказа' : 'Создание нового заказа'}</DialogTitle>
+                    <DialogDescription>
+                      {editingOrder ? `Редактирование заказа "${editingOrder.name}"` : 'Заполните информацию о новом проекте или задаче.'}
+                    </DialogDescription>
                   </DialogHeader>
                   <Form {...form}>
                     <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4">
@@ -333,7 +386,7 @@ export default function DepartmentManager() {
                       <div className="grid grid-cols-2 gap-4">
                           <FormField name="currentOwnerId" control={form.control} render={({ field }) => (
                               <FormItem><FormLabel>Текущий ответственный</FormLabel>
-                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                  <Select onValueChange={field.onChange} value={field.value}>
                                       <FormControl><SelectTrigger><SelectValue placeholder="Выберите сотрудника" /></SelectTrigger></FormControl>
                                       <SelectContent>{mockEmployees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
                                   </Select>
@@ -341,7 +394,7 @@ export default function DepartmentManager() {
                           )} />
                           <FormField name="strategicGoalId" control={form.control} render={({ field }) => (
                               <FormItem><FormLabel>Стратегическая цель</FormLabel>
-                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                  <Select onValueChange={field.onChange} value={field.value}>
                                       <FormControl><SelectTrigger><SelectValue placeholder="Выберите цель" /></SelectTrigger></FormControl>
                                       <SelectContent>{mockStrategicGoals.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
                                   </Select>
@@ -352,7 +405,7 @@ export default function DepartmentManager() {
                           <FormItem><FormLabel>Срок выполнения</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
                        )} />
                       
-                      {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 && (
+                      {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 && !editingOrder && (
                           <Card className="bg-destructive/10 border-destructive/50 p-4">
                               <CardHeader className="p-0">
                                  <CardTitle className="text-destructive text-lg flex items-center gap-2"><AlertTriangle/> Возможный дубликат!</CardTitle>
@@ -370,11 +423,11 @@ export default function DepartmentManager() {
                       )}
                       
                       <DialogFooter>
-                        {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 ? (
+                        {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 && !editingOrder ? (
                           <Button type="button" variant="secondary" onClick={() => addNewOrder(form.getValues(), true)}>Все равно создать</Button>
                         ) : null}
                         <Button type="submit" disabled={isCheckingForDuplicates}>
-                          {isCheckingForDuplicates ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Проверка...</> : "Создать заказ"}
+                          {isCheckingForDuplicates ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Проверка...</> : (editingOrder ? 'Сохранить изменения' : 'Создать заказ')}
                         </Button>
                       </DialogFooter>
                     </form>
@@ -392,12 +445,13 @@ export default function DepartmentManager() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[20%]">Название/Ответственный</TableHead>
-                <TableHead className="w-[20%]">Стратегическая цель</TableHead>
-                <TableHead className="w-[10%]">Статус</TableHead>
+                <TableHead className="w-[15%]">Стратегическая цель</TableHead>
+                <TableHead className="w-[12%]">Статус</TableHead>
                 <TableHead className="w-[10%] text-center">I</TableHead>
                 <TableHead className="w-[10%] text-center">C</TableHead>
                 <TableHead className="w-[10%] text-center">E</TableHead>
-                <TableHead className="w-[10%] text-center font-bold">ICE</TableHead>
+                <TableHead className="w-[8%] text-center font-bold">ICE</TableHead>
+                <TableHead className="w-[5%] text-center">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -421,18 +475,23 @@ export default function DepartmentManager() {
                     </Select>
                   </TableCell>
                   <TableCell>
-                    <Slider defaultValue={[order.influence]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(index, 'influence', val)} />
+                    <Slider defaultValue={[order.influence]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(order.id, 'influence', val)} />
                     <p className="text-center text-xs mt-1">{order.influence}</p>
                   </TableCell>
                   <TableCell>
-                    <Slider defaultValue={[order.confidence]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(index, 'confidence', val)} />
+                    <Slider defaultValue={[order.confidence]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(order.id, 'confidence', val)} />
                      <p className="text-center text-xs mt-1">{order.confidence}</p>
                   </TableCell>
                   <TableCell>
-                    <Slider defaultValue={[order.effort]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(index, 'effort', val)} />
+                    <Slider defaultValue={[order.effort]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(order.id, 'effort', val)} />
                      <p className="text-center text-xs mt-1">{order.effort}</p>
                   </TableCell>
                   <TableCell className="text-center text-lg font-bold">{order.iceScore}</TableCell>
+                   <TableCell className="text-center">
+                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditOrderForm(order)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
