@@ -1,6 +1,6 @@
 
 import ServiceTile from '@/components/app/ServiceTile';
-import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList, ListTodo, FileCog, Newspaper, Bot } from 'lucide-react'; // Added Bot, Newspaper, FileCog
+import { Lightbulb, FileText, CalendarClock, Layers, FileSignature, Landmark, Building2, Home, Brain, FileCheck2, ShieldCheck, ShieldAlert, FileArchive, SearchCode, ClipboardList, ListTodo, FileCog, Newspaper, Bot, KanbanSquare } from 'lucide-react'; // Added Bot, Newspaper, FileCog, KanbanSquare
 
 export default function HomePage() {
   const services = [
@@ -69,6 +69,12 @@ export default function HomePage() {
       description: 'Автоматизированная проверка договоров долевого участия (ДДУ) по настраиваемому чек-листу.',
       href: '/kskb-ddu-check',
       icon: <FileCheck2 className="h-8 w-8" />,
+    },
+     {
+      title: 'Система управления подразделением',
+      description: 'Прототип системы для управления заказами/задачами подразделения с AI-помощником и расчетом приоритетов.',
+      href: '/department-manager',
+      icon: <KanbanSquare className="h-8 w-8" />,
     },
     {
       title: 'Тест с КСКБ',
@@ -172,7 +178,7 @@ export default function HomePage() {
           Доступные Инструменты
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {services.map((service) => (
+          {services.sort((a, b) => a.title.localeCompare(b.title)).map((service) => (
             <ServiceTile
               key={service.title}
               title={service.title}
