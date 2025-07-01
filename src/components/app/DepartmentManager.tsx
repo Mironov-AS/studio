@@ -125,10 +125,7 @@ const mockOrders: Order[] = [
     confidence: 9,
     effort: 6,
     iceScore: 7 * 9 * 6,
-    team: [
-        { employee: mockEmployees[1], allocationPercent: 100 },
-        { employee: mockEmployees[3], allocationPercent: 50 },
-    ],
+    team: [],
     notes: ''
   },
 ];
@@ -274,6 +271,18 @@ export default function DepartmentManager() {
       newOrders[orderIndex] = order;
       return newOrders;
     });
+  };
+
+  const handleStatusChange = (order: Order, newStatus: Status) => {
+    if (newStatus === 'Выполняется' && order.team.length === 0) {
+      toast({
+        title: "Невозможно изменить статус",
+        description: "Назначьте команду проекта, прежде чем переводить заказ в статус 'Выполняется'.",
+        variant: "destructive",
+      });
+      return; // Do not update the status
+    }
+    setOrders(orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o));
   };
 
   const handleOpenNewOrderForm = () => {
@@ -641,7 +650,7 @@ export default function DepartmentManager() {
                   </TableCell>
                   <TableCell className="text-sm">{order.strategicGoal.name}</TableCell>
                   <TableCell>
-                    <Select value={order.status} onValueChange={(newStatus) => setOrders(orders.map(o => o.id === order.id ? {...o, status: newStatus as Status} : o))}>
+                    <Select value={order.status} onValueChange={(newStatus) => handleStatusChange(order, newStatus as Status)}>
                       <SelectTrigger className="text-xs h-8"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Планируется">Планируется</SelectItem>
