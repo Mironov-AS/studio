@@ -11,13 +11,13 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
-export const FindSimilarTasksInputSchema = z.object({
+const FindSimilarTasksInputSchema = z.object({
   newTaskDescription: z.string().describe('The description of the new task to be checked for duplicates.'),
   existingTasksJson: z.string().describe('A JSON string representing an array of existing tasks. Each task object should have at least an "id" and a "description" or "name" field.'),
 });
 export type FindSimilarTasksInput = z.infer<typeof FindSimilarTasksInputSchema>;
 
-export const FindSimilarTasksOutputSchema = z.object({
+const FindSimilarTasksOutputSchema = z.object({
   similarTaskIds: z.array(z.string()).describe('An array of IDs of existing tasks that are considered similar or duplicates.'),
   reasoning: z.string().describe('A brief explanation from the AI on why the tasks are considered similar, or a confirmation that no duplicates were found.'),
 });
