@@ -11,13 +11,13 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
-export const ChatWithBacklogInputSchema = z.object({
+const ChatWithBacklogInputSchema = z.object({
   userQuestion: z.string().min(1, "Вопрос не может быть пустым.").describe('The user’s question about the backlog.'),
   backlogJson: z.string().min(1, "Контекст бэклога не может быть пустым.").describe('The current backlog of tasks/orders as a JSON string.'),
 });
 export type ChatWithBacklogInput = z.infer<typeof ChatWithBacklogInputSchema>;
 
-export const ChatWithBacklogOutputSchema = z.object({
+const ChatWithBacklogOutputSchema = z.object({
   answer: z.string().describe('The AI-generated answer to the user’s question based on the backlog.'),
 });
 export type ChatWithBacklogOutput = z.infer<typeof ChatWithBacklogOutputSchema>;
