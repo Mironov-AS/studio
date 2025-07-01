@@ -20,4 +20,5 @@ import '@/ai/flows/analyze-backlog-completeness-flow.ts';
 import '@/ai/flows/generateTechSpecFromBacklogFlow';
 import '@/ai/flows/analyze-news-feed-flow.ts';
 import '@/ai/flows/process-reminder-request-flow.ts';
-import '@/ai/flows/find-similar-tasks-flow.ts'; // Added new flow
+import '@/ai/flows/find-similar-tasks-flow.ts';
+import '@/ai/flows/chat-with-backlog-flow.ts'; // Added new flow

@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, FormEvent } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -19,7 +19,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { findSimilarTasks, FindSimilarTasksOutput } from '@/ai/flows/find-similar-tasks-flow';
-import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot } from 'lucide-react';
+import { chatWithBacklog, ChatWithBacklogOutput } from '@/ai/flows/chat-with-backlog-flow';
+import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Cell } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+
 
 // Data Structures (TypeScript Types)
 type Status = 'Планируется' | 'Выполняется' | 'Завершен' | 'Отклонён' | 'Приостановлен';
@@ -50,6 +55,11 @@ interface Order {
   confidence: number;
   effort: number;
   iceScore: number;
+}
+
+interface ChatMessage {
+    role: 'user' | 'ai';
+    text: string;
 }
 
 // Mock Data (will be replaced by a real backend/DB in a full application)
@@ -112,11 +122,19 @@ const orderFormSchema = z.object({
 
 type OrderFormValues = z.infer<typeof orderFormSchema>;
 
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
+
 export default function DepartmentManager() {
   const [orders, setOrders] = useState<Order[]>(mockOrders);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  
+  // AI States
   const [isCheckingForDuplicates, setIsCheckingForDuplicates] = useState(false);
   const [similarTasksInfo, setSimilarTasksInfo] = useState<FindSimilarTasksOutput | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  
   const { toast } = useToast();
 
   const form = useForm<OrderFormValues>({
@@ -129,6 +147,31 @@ export default function DepartmentManager() {
       dueDate: '',
     },
   });
+  
+  // ---- Statistics Calculation ----
+  const stats = useMemo(() => {
+    const statusCounts = orders.reduce((acc, order) => {
+        acc[order.status] = (acc[order.status] || 0) + 1;
+        return acc;
+    }, {} as Record<Status, number>);
+
+    const employeeCounts = orders.reduce((acc, order) => {
+        acc[order.currentOwner.name] = (acc[order.currentOwner.name] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const goalCounts = orders.reduce((acc, order) => {
+        acc[order.strategicGoal.name] = (acc[order.strategicGoal.name] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    return {
+        statusData: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
+        employeeData: Object.entries(employeeCounts).map(([name, value]) => ({ name, value })),
+        goalData: Object.entries(goalCounts).map(([name, value]) => ({ name, value })),
+    };
+  }, [orders]);
+
 
   const updateIceScore = (index: number, field: 'influence' | 'confidence' | 'effort', value: number) => {
     setOrders(prevOrders => {
@@ -155,7 +198,6 @@ export default function DepartmentManager() {
       setSimilarTasksInfo(result);
 
       if (result.similarTaskIds.length > 0) {
-        // Don't add the task yet, let the user decide in the dialog
         toast({
           title: "Внимание: Найдены похожие задачи!",
           description: "AI обнаружил возможные дубликаты. Проверьте информацию ниже.",
@@ -232,154 +274,263 @@ export default function DepartmentManager() {
     toast({ title: "Экспорт успешен" });
   };
   
+  const handleSendMessage = async (e: FormEvent) => {
+      e.preventDefault();
+      if (!chatInput.trim() || isChatLoading) return;
+      
+      const userMessage: ChatMessage = { role: 'user', text: chatInput };
+      setChatHistory(prev => [...prev, userMessage]);
+      setChatInput('');
+      setIsChatLoading(true);
+
+      try {
+        const backlogJson = JSON.stringify(orders);
+        const result: ChatWithBacklogOutput = await chatWithBacklog({ userQuestion: userMessage.text, backlogJson });
+        const aiMessage: ChatMessage = { role: 'ai', text: result.answer };
+        setChatHistory(prev => [...prev, aiMessage]);
+      } catch (error) {
+        console.error("Chatbot error:", error);
+        const errorMessage: ChatMessage = { role: 'ai', text: "Извините, произошла ошибка. Не могу сейчас ответить." };
+        setChatHistory(prev => [...prev, errorMessage]);
+      } finally {
+        setIsChatLoading(false);
+      }
+  };
+
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => b.iceScore - a.iceScore);
   }, [orders]);
 
 
   return (
-    <Card className="w-full shadow-xl rounded-xl">
-      <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle className="flex items-center gap-3 text-3xl font-bold">
-            <KanbanSquare className="h-8 w-8 text-accent" />
-            Система управления подразделением
-          </CardTitle>
-          <div className="flex gap-2">
-            <Button onClick={exportToXLSX} variant="outline"><Download className="mr-2 h-4 w-4"/> Экспорт в XLSX</Button>
-            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-              <DialogTrigger asChild>
-                <Button><PlusCircle className="mr-2 h-4 w-4"/>Новый заказ</Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[625px]">
-                <DialogHeader>
-                  <DialogTitle>Создание нового заказа</DialogTitle>
-                  <DialogDescription>Заполните информацию о новом проекте или задаче.</DialogDescription>
-                </DialogHeader>
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4">
-                    <FormField name="name" control={form.control} render={({ field }) => (
-                      <FormItem><FormLabel>Название заказа</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField name="description" control={form.control} render={({ field }) => (
-                      <FormItem><FormLabel>Описание/Цель проекта</FormLabel><FormControl><Textarea {...field} rows={4} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <div className="grid grid-cols-2 gap-4">
-                        <FormField name="currentOwnerId" control={form.control} render={({ field }) => (
-                            <FormItem><FormLabel>Текущий ответственный</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue placeholder="Выберите сотрудника" /></SelectTrigger></FormControl>
-                                    <SelectContent>{mockEmployees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
-                                </Select>
-                            <FormMessage /></FormItem>
-                        )} />
-                        <FormField name="strategicGoalId" control={form.control} render={({ field }) => (
-                            <FormItem><FormLabel>Стратегическая цель</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue placeholder="Выберите цель" /></SelectTrigger></FormControl>
-                                    <SelectContent>{mockStrategicGoals.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
-                                </Select>
-                            <FormMessage /></FormItem>
-                        )} />
-                    </div>
-                     <FormField name="dueDate" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Срок выполнения</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
-                     )} />
-                    
-                    {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 && (
-                        <Card className="bg-destructive/10 border-destructive/50 p-4">
-                            <CardHeader className="p-0">
-                               <CardTitle className="text-destructive text-lg flex items-center gap-2"><AlertTriangle/> Возможный дубликат!</CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-0 pt-2">
-                                <p className="text-sm text-destructive-foreground">{similarTasksInfo.reasoning}</p>
-                                <ul className="list-disc pl-5 mt-2 text-sm">
-                                    {similarTasksInfo.similarTaskIds.map(id => {
-                                        const task = orders.find(o => o.id === id);
-                                        return <li key={id}><strong>{task?.name}</strong> (Отв: {task?.currentOwner.name})</li>
-                                    })}
-                                </ul>
-                            </CardContent>
-                        </Card>
-                    )}
-                    
-                    <DialogFooter>
-                      {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 ? (
-                        <Button type="button" variant="secondary" onClick={() => addNewOrder(form.getValues(), true)}>Все равно создать</Button>
-                      ) : null}
-                      <Button type="submit" disabled={isCheckingForDuplicates}>
-                        {isCheckingForDuplicates ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Проверка...</> : "Создать заказ"}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </Form>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-        <CardDescription>
-          Прототип системы для управления задачами. Данные хранятся в браузере и сбрасываются при перезагрузке.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[20%]">Название/Ответственный</TableHead>
-              <TableHead className="w-[20%]">Стратегическая цель</TableHead>
-              <TableHead className="w-[10%]">Статус</TableHead>
-              <TableHead className="w-[10%] text-center">I</TableHead>
-              <TableHead className="w-[10%] text-center">C</TableHead>
-              <TableHead className="w-[10%] text-center">E</TableHead>
-              <TableHead className="w-[10%] text-center font-bold">ICE</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedOrders.map((order, index) => (
-              <TableRow key={order.id}>
-                <TableCell>
-                  <p className="font-medium">{order.name}</p>
-                  <p className="text-sm text-muted-foreground">{order.currentOwner.name}</p>
-                </TableCell>
-                <TableCell className="text-sm">{order.strategicGoal.name}</TableCell>
-                <TableCell>
-                  <Select value={order.status} onValueChange={(newStatus) => setOrders(orders.map(o => o.id === order.id ? {...o, status: newStatus as Status} : o))}>
-                    <SelectTrigger className="text-xs h-8"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Планируется">Планируется</SelectItem>
-                      <SelectItem value="Выполняется">Выполняется</SelectItem>
-                      <SelectItem value="Завершен">Завершен</SelectItem>
-                      <SelectItem value="Отклонён">Отклонён</SelectItem>
-                      <SelectItem value="Приостановлен">Приостановлен</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </TableCell>
-                <TableCell>
-                  <Slider defaultValue={[order.influence]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(index, 'influence', val)} />
-                  <p className="text-center text-xs mt-1">{order.influence}</p>
-                </TableCell>
-                <TableCell>
-                  <Slider defaultValue={[order.confidence]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(index, 'confidence', val)} />
-                   <p className="text-center text-xs mt-1">{order.confidence}</p>
-                </TableCell>
-                <TableCell>
-                  <Slider defaultValue={[order.effort]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(index, 'effort', val)} />
-                   <p className="text-center text-xs mt-1">{order.effort}</p>
-                </TableCell>
-                <TableCell className="text-center text-lg font-bold">{order.iceScore}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-         {/* Simple Chatbot PoC Section */}
-        <div className="mt-8 border-t pt-6">
-            <h3 className="text-lg font-semibold flex items-center gap-2"><Bot className="h-6 w-6 text-primary"/>AI-Ассистент</h3>
-            <p className="text-sm text-muted-foreground mb-4">Задайте вопрос по текущим заказам (контекст ограничен таблицей выше).</p>
-            <div className="border p-4 rounded-lg bg-muted/20 min-h-[100px] text-center flex items-center justify-center">
-                <p className="text-muted-foreground">Интерактивный чат-бот в разработке...</p>
+    <div className="space-y-6">
+      <Card className="w-full shadow-xl rounded-xl">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="flex items-center gap-3 text-3xl font-bold">
+              <KanbanSquare className="h-8 w-8 text-accent" />
+              Система управления подразделением
+            </CardTitle>
+            <div className="flex gap-2">
+              <Button onClick={exportToXLSX} variant="outline"><Download className="mr-2 h-4 w-4"/> Экспорт в XLSX</Button>
+              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogTrigger asChild>
+                  <Button><PlusCircle className="mr-2 h-4 w-4"/>Новый заказ</Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[625px]">
+                  <DialogHeader>
+                    <DialogTitle>Создание нового заказа</DialogTitle>
+                    <DialogDescription>Заполните информацию о новом проекте или задаче.</DialogDescription>
+                  </DialogHeader>
+                  <Form {...form}>
+                    <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 py-4">
+                      <FormField name="name" control={form.control} render={({ field }) => (
+                        <FormItem><FormLabel>Название заказа</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField name="description" control={form.control} render={({ field }) => (
+                        <FormItem><FormLabel>Описание/Цель проекта</FormLabel><FormControl><Textarea {...field} rows={4} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                      <div className="grid grid-cols-2 gap-4">
+                          <FormField name="currentOwnerId" control={form.control} render={({ field }) => (
+                              <FormItem><FormLabel>Текущий ответственный</FormLabel>
+                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                      <FormControl><SelectTrigger><SelectValue placeholder="Выберите сотрудника" /></SelectTrigger></FormControl>
+                                      <SelectContent>{mockEmployees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
+                                  </Select>
+                              <FormMessage /></FormItem>
+                          )} />
+                          <FormField name="strategicGoalId" control={form.control} render={({ field }) => (
+                              <FormItem><FormLabel>Стратегическая цель</FormLabel>
+                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                      <FormControl><SelectTrigger><SelectValue placeholder="Выберите цель" /></SelectTrigger></FormControl>
+                                      <SelectContent>{mockStrategicGoals.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}</SelectContent>
+                                  </Select>
+                              <FormMessage /></FormItem>
+                          )} />
+                      </div>
+                       <FormField name="dueDate" control={form.control} render={({ field }) => (
+                          <FormItem><FormLabel>Срок выполнения</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                       )} />
+                      
+                      {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 && (
+                          <Card className="bg-destructive/10 border-destructive/50 p-4">
+                              <CardHeader className="p-0">
+                                 <CardTitle className="text-destructive text-lg flex items-center gap-2"><AlertTriangle/> Возможный дубликат!</CardTitle>
+                              </CardHeader>
+                              <CardContent className="p-0 pt-2">
+                                  <p className="text-sm text-destructive-foreground">{similarTasksInfo.reasoning}</p>
+                                  <ul className="list-disc pl-5 mt-2 text-sm">
+                                      {similarTasksInfo.similarTaskIds.map(id => {
+                                          const task = orders.find(o => o.id === id);
+                                          return <li key={id}><strong>{task?.name}</strong> (Отв: {task?.currentOwner.name})</li>
+                                      })}
+                                  </ul>
+                              </CardContent>
+                          </Card>
+                      )}
+                      
+                      <DialogFooter>
+                        {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 ? (
+                          <Button type="button" variant="secondary" onClick={() => addNewOrder(form.getValues(), true)}>Все равно создать</Button>
+                        ) : null}
+                        <Button type="submit" disabled={isCheckingForDuplicates}>
+                          {isCheckingForDuplicates ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Проверка...</> : "Создать заказ"}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </Form>
+                </DialogContent>
+              </Dialog>
             </div>
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+          <CardDescription>
+            Прототип системы для управления задачами. Данные хранятся в браузере и сбрасываются при перезагрузке.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[20%]">Название/Ответственный</TableHead>
+                <TableHead className="w-[20%]">Стратегическая цель</TableHead>
+                <TableHead className="w-[10%]">Статус</TableHead>
+                <TableHead className="w-[10%] text-center">I</TableHead>
+                <TableHead className="w-[10%] text-center">C</TableHead>
+                <TableHead className="w-[10%] text-center">E</TableHead>
+                <TableHead className="w-[10%] text-center font-bold">ICE</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedOrders.map((order, index) => (
+                <TableRow key={order.id}>
+                  <TableCell>
+                    <p className="font-medium">{order.name}</p>
+                    <p className="text-sm text-muted-foreground">{order.currentOwner.name}</p>
+                  </TableCell>
+                  <TableCell className="text-sm">{order.strategicGoal.name}</TableCell>
+                  <TableCell>
+                    <Select value={order.status} onValueChange={(newStatus) => setOrders(orders.map(o => o.id === order.id ? {...o, status: newStatus as Status} : o))}>
+                      <SelectTrigger className="text-xs h-8"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Планируется">Планируется</SelectItem>
+                        <SelectItem value="Выполняется">Выполняется</SelectItem>
+                        <SelectItem value="Завершен">Завершен</SelectItem>
+                        <SelectItem value="Отклонён">Отклонён</SelectItem>
+                        <SelectItem value="Приостановлен">Приостановлен</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Slider defaultValue={[order.influence]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(index, 'influence', val)} />
+                    <p className="text-center text-xs mt-1">{order.influence}</p>
+                  </TableCell>
+                  <TableCell>
+                    <Slider defaultValue={[order.confidence]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(index, 'confidence', val)} />
+                     <p className="text-center text-xs mt-1">{order.confidence}</p>
+                  </TableCell>
+                  <TableCell>
+                    <Slider defaultValue={[order.effort]} max={10} min={1} step={1} onValueChange={([val]) => updateIceScore(index, 'effort', val)} />
+                     <p className="text-center text-xs mt-1">{order.effort}</p>
+                  </TableCell>
+                  <TableCell className="text-center text-lg font-bold">{order.iceScore}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-xl rounded-xl">
+        <CardHeader>
+            <CardTitle className="flex items-center gap-3 text-2xl font-bold"><BarChart2 className="h-8 w-8 text-accent"/>Статистика</CardTitle>
+            <CardDescription>Обзор текущего состояния заказов.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+                <CardHeader><CardTitle className="text-lg flex items-center gap-2"><PieChartIcon className="h-5 w-5"/>Статусы</CardTitle></CardHeader>
+                <CardContent>
+                    <ChartContainer config={{}} className="h-[200px] w-full">
+                        <ResponsiveContainer>
+                            <PieChart>
+                                <Pie data={stats.statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                                    {stats.statusData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip content={<ChartTooltipContent hideLabel />} />
+                                <Legend />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </ChartContainer>
+                </CardContent>
+            </Card>
+             <Card className="md:col-span-2">
+                <CardHeader><CardTitle className="text-lg">Загрузка и цели</CardTitle></CardHeader>
+                <CardContent className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                        <h4 className="font-semibold mb-2 text-sm">Заказы на сотрудника</h4>
+                         <ChartContainer config={{}} className="h-[200px] w-full">
+                            <ResponsiveContainer>
+                                <BarChart data={stats.employeeData} layout="vertical" margin={{ left: 50 }}>
+                                    <XAxis type="number" hide />
+                                    <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 12}}/>
+                                    <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent hideLabel />}/>
+                                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={4}/>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </ChartContainer>
+                    </div>
+                    <div>
+                       <h4 className="font-semibold mb-2 text-sm">Заказы по целям</h4>
+                        <ChartContainer config={{}} className="h-[200px] w-full">
+                            <ResponsiveContainer>
+                                <BarChart data={stats.goalData} layout="vertical" margin={{ left: 50 }}>
+                                     <XAxis type="number" hide />
+                                    <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 10}}/>
+                                    <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent hideLabel />}/>
+                                    <Bar dataKey="value" fill="hsl(var(--secondary))" radius={4}/>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </ChartContainer>
+                    </div>
+                </CardContent>
+            </Card>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-xl rounded-xl">
+        <CardHeader>
+            <CardTitle className="flex items-center gap-3 text-2xl font-bold"><Bot className="h-8 w-8 text-accent"/>AI-Ассистент</CardTitle>
+            <CardDescription>Задайте вопрос по текущим заказам. Например: "Какие задачи у Петрова?" или "Покажи все проекты со статусом 'Завершен'".</CardDescription>
+        </CardHeader>
+        <CardContent>
+           <div className="border rounded-lg p-4 bg-muted/20">
+             <ScrollArea className="h-60 w-full mb-4 pr-4">
+                {chatHistory.length === 0 && <div className="flex h-full items-center justify-center text-muted-foreground">Здесь будет история чата...</div>}
+                <div className="space-y-4">
+                {chatHistory.map((msg, index) => (
+                    <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                         {msg.role === 'ai' && <Bot className="h-6 w-6 shrink-0 text-primary"/>}
+                         <div className={`rounded-lg px-4 py-2 max-w-[80%] ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-background'}`}>
+                            <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                         </div>
+                    </div>
+                ))}
+                {isChatLoading && (
+                    <div className="flex items-start gap-3">
+                        <Bot className="h-6 w-6 shrink-0 text-primary"/>
+                        <div className="rounded-lg px-4 py-2 bg-background"><Loader2 className="h-5 w-5 animate-spin"/></div>
+                    </div>
+                )}
+                </div>
+             </ScrollArea>
+             <form onSubmit={handleSendMessage} className="flex gap-2">
+                <Input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Спросите что-нибудь..." disabled={isChatLoading} />
+                <Button type="submit" disabled={isChatLoading || !chatInput.trim()}><Send className="h-4 w-4"/></Button>
+             </form>
+           </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
