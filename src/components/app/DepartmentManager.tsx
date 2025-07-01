@@ -20,10 +20,12 @@ import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { findSimilarTasks, FindSimilarTasksOutput } from '@/ai/flows/find-similar-tasks-flow';
 import { chatWithBacklog, ChatWithBacklogOutput } from '@/ai/flows/chat-with-backlog-flow';
-import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit } from 'lucide-react';
+import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit, FileText, User, Users, CalendarDays, Goal, TrendingUp, Notebook } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Cell } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 
 // Data Structures (TypeScript Types)
@@ -55,6 +57,7 @@ interface Order {
   confidence: number;
   effort: number;
   iceScore: number;
+  notes: string;
 }
 
 interface ChatMessage {
@@ -92,6 +95,7 @@ const mockOrders: Order[] = [
     confidence: 8,
     effort: 4,
     iceScore: 9 * 8 * 4,
+    notes: 'Первый этап завершен. Ожидаем поставку оборудования от вендора X. Есть риск задержки на 2 недели.'
   },
   {
     id: nanoid(),
@@ -108,6 +112,7 @@ const mockOrders: Order[] = [
     confidence: 9,
     effort: 6,
     iceScore: 7 * 9 * 6,
+    notes: ''
   },
 ];
 
@@ -130,7 +135,11 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 export default function DepartmentManager() {
   const [orders, setOrders] = useState<Order[]>(mockOrders);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+  const [currentNotes, setCurrentNotes] = useState('');
+
 
   // AI States
   const [isCheckingForDuplicates, setIsCheckingForDuplicates] = useState(false);
@@ -167,10 +176,16 @@ export default function DepartmentManager() {
         confidence: editingOrder.confidence,
         effort: editingOrder.effort,
       });
-    } else {
+    } else if (!isFormOpen) {
       form.reset();
     }
   }, [isFormOpen, editingOrder, form]);
+
+  useEffect(() => {
+    if (isDetailsOpen && viewingOrder) {
+        setCurrentNotes(viewingOrder.notes);
+    }
+  }, [isDetailsOpen, viewingOrder]);
   
   // ---- Statistics Calculation ----
   const stats = useMemo(() => {
@@ -218,6 +233,24 @@ export default function DepartmentManager() {
   const handleOpenEditOrderForm = (order: Order) => {
     setEditingOrder(order);
     setIsFormOpen(true);
+  };
+
+  const handleOpenDetails = (order: Order) => {
+    setViewingOrder(order);
+    setIsDetailsOpen(true);
+  };
+
+  const handleSaveNotes = () => {
+    if (!viewingOrder) return;
+    setOrders(prevOrders =>
+      prevOrders.map(o =>
+        o.id === viewingOrder.id ? { ...o, notes: currentNotes } : o
+      )
+    );
+    // Update the viewingOrder as well so the change is reflected instantly if dialog stays open
+    setViewingOrder(prev => prev ? {...prev, notes: currentNotes} : null);
+    toast({ title: "Заметки сохранены" });
+    // setIsDetailsOpen(false); // Optional: close dialog on save
   };
 
   const handleFormSubmit = async (data: OrderFormValues) => {
@@ -304,6 +337,7 @@ export default function DepartmentManager() {
         confidence: data.confidence,
         effort: data.effort,
         iceScore: iceScore,
+        notes: ''
       };
       setOrders(prev => [...prev, newOrder]);
       if (force) {
@@ -333,6 +367,7 @@ export default function DepartmentManager() {
       'Срок': o.dueDate,
       'Стратегическая цель': o.strategicGoal.name,
       'Описание': o.description,
+      'Заметки': o.notes,
     }));
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
@@ -367,6 +402,17 @@ export default function DepartmentManager() {
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => b.iceScore - a.iceScore);
   }, [orders]);
+
+  const getStatusBadgeVariant = (status: Status) => {
+    switch (status) {
+        case 'Выполняется': return 'default';
+        case 'Завершен': return 'secondary';
+        case 'Планируется': return 'outline';
+        case 'Отклонён': return 'destructive';
+        case 'Приостановлен': return 'default'; // Or some other variant
+        default: return 'outline';
+    }
+  };
 
 
   return (
@@ -484,7 +530,7 @@ export default function DepartmentManager() {
             </div>
           </div>
           <CardDescription>
-            Прототип системы для управления задачами. Данные хранятся в браузере и сбрасываются при перезагрузке.
+            Прототип системы для управления задачами. Данные хранятся в браузере и сбрасываются при перезагрузке. Дважды кликните по заказу для просмотра деталей.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -502,8 +548,8 @@ export default function DepartmentManager() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedOrders.map((order, index) => (
-                <TableRow key={order.id}>
+              {sortedOrders.map((order) => (
+                <TableRow key={order.id} onDoubleClick={() => handleOpenDetails(order)} className="cursor-pointer">
                   <TableCell>
                     <p className="font-medium">{order.name}</p>
                     <p className="text-sm text-muted-foreground">{order.currentOwner.name}</p>
@@ -535,7 +581,7 @@ export default function DepartmentManager() {
                   </TableCell>
                   <TableCell className="text-center text-lg font-bold">{order.iceScore}</TableCell>
                    <TableCell className="text-center">
-                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditOrderForm(order)}>
+                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenEditOrderForm(order); }}>
                       <Edit className="h-4 w-4" />
                     </Button>
                   </TableCell>
@@ -545,6 +591,82 @@ export default function DepartmentManager() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Details Dialog */}
+       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">{viewingOrder?.name}</DialogTitle>
+            <DialogDescription>Карточка заказа. Здесь собрана вся актуальная информация.</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[70vh] p-1">
+            <div className="space-y-6 pr-4 py-2">
+                <div className="space-y-4">
+                    <h3 className="text-lg font-semibold flex items-center gap-2"><FileText className="h-5 w-5 text-primary"/>Описание</h3>
+                    <p className="text-sm text-muted-foreground bg-secondary/30 p-3 rounded-md">{viewingOrder?.description}</p>
+                </div>
+
+                <Separator />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold flex items-center gap-2"><Users className="h-5 w-5 text-primary"/>Участники и сроки</h3>
+                         <div className="text-sm space-y-2">
+                            <p className="flex items-center gap-2"><User className="h-4 w-4 text-muted-foreground"/><strong>Инициатор:</strong> {viewingOrder?.initiator.name}</p>
+                            <p className="flex items-center gap-2"><User className="h-4 w-4 text-muted-foreground"/><strong>Ответственный:</strong> {viewingOrder?.currentOwner.name}</p>
+                            <p className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-muted-foreground"/><strong>Срок выполнения:</strong> {viewingOrder?.dueDate}</p>
+                        </div>
+                    </div>
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold flex items-center gap-2"><Goal className="h-5 w-5 text-primary"/>Бизнес-цели</h3>
+                         <div className="text-sm space-y-2">
+                             <p><strong>Стратегическая цель:</strong> {viewingOrder?.strategicGoal.name}</p>
+                             <p><strong>Драйвер ценности:</strong> {viewingOrder?.valueDriver}</p>
+                             <p><strong>Ожидаемый эффект:</strong> {viewingOrder?.expectedEffect}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <Separator />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary"/>Приоритет (ICE)</h3>
+                        <div className="space-y-2 text-sm p-3 bg-secondary/30 rounded-md">
+                            <p><strong>Влияние (Influence):</strong> {viewingOrder?.influence}</p>
+                            <p><strong>Уверенность (Confidence):</strong> {viewingOrder?.confidence}</p>
+                            <p><strong>Усилия (Effort):</strong> {viewingOrder?.effort}</p>
+                            <p className="font-bold"><strong>ICE Score: {viewingOrder?.iceScore}</strong></p>
+                        </div>
+                    </div>
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold">Статус</h3>
+                        <Badge variant={getStatusBadgeVariant(viewingOrder?.status || 'Планируется')} className="text-lg">
+                           {viewingOrder?.status}
+                        </Badge>
+                    </div>
+                </div>
+                
+                <Separator />
+                
+                 <div className="space-y-2">
+                    <h3 className="text-lg font-semibold flex items-center gap-2"><Notebook className="h-5 w-5 text-primary"/>Заметки менеджера</h3>
+                    <Textarea
+                      placeholder="Здесь можно вести заметки по ходу выполнения заказа..."
+                      rows={6}
+                      value={currentNotes}
+                      onChange={(e) => setCurrentNotes(e.target.value)}
+                    />
+                </div>
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button type="button" onClick={() => handleSaveNotes()}>Сохранить заметки</Button>
+            <DialogClose asChild><Button type="button" variant="secondary">Закрыть</Button></DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       <Card className="shadow-xl rounded-xl">
         <CardHeader>
