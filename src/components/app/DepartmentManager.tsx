@@ -28,6 +28,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { cn } from "@/lib/utils";
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 
 // Data Structures (TypeScript Types)
@@ -223,9 +224,9 @@ export default function DepartmentManager() {
   }, [orders]);
 
   const employeeWorkload = useMemo(() => {
-    const workload = new Map<string, { employee: Employee; totalAllocation: number }>();
+    const workload = new Map<string, { employee: Employee; totalAllocation: number; projects: { name: string; allocationPercent: number }[] }>();
     mockEmployees.forEach(emp => {
-      workload.set(emp.id, { employee: emp, totalAllocation: 0 });
+      workload.set(emp.id, { employee: emp, totalAllocation: 0, projects: [] });
     });
 
     orders.forEach(order => {
@@ -234,11 +235,12 @@ export default function DepartmentManager() {
           const currentLoad = workload.get(member.employee.id);
           if (currentLoad) {
             currentLoad.totalAllocation += member.allocationPercent;
+            currentLoad.projects.push({ name: order.name, allocationPercent: member.allocationPercent });
           }
         });
       }
     });
-    return Array.from(workload.values()).sort((a,b) => b.totalAllocation - a.totalAllocation);
+    return Array.from(workload.values()).sort((a, b) => b.totalAllocation - a.totalAllocation);
   }, [orders]);
   
   const staffingSuggestion = useMemo(() => {
@@ -835,32 +837,52 @@ export default function DepartmentManager() {
                 <CardDescription>Суммарная аллокация по проектам в статусе "Выполняется". &gt;100% = перегрузка.</CardDescription>
             </CardHeader>
             <CardContent>
+              <TooltipProvider>
                 <ScrollArea className="h-[300px]">
                     <div className="space-y-4 pr-4">
-                        {employeeWorkload.map(({ employee, totalAllocation }) => (
-                            <div key={employee.id}>
-                                <div className="flex justify-between items-center mb-1">
-                                    <span className="text-sm font-medium">{employee.name}</span>
-                                    <span className={cn(
-                                        "text-sm font-semibold",
-                                        totalAllocation > 100 && "text-destructive"
-                                    )}>
-                                        {totalAllocation}%
-                                    </span>
+                        {employeeWorkload.map(({ employee, totalAllocation, projects }) => (
+                           <Tooltip key={employee.id} delayDuration={300}>
+                              <TooltipTrigger asChild>
+                                <div className="cursor-help">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-sm font-medium">{employee.name}</span>
+                                        <span className={cn(
+                                            "text-sm font-semibold",
+                                            totalAllocation > 100 && "text-destructive"
+                                        )}>
+                                            {totalAllocation}%
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-muted rounded-full h-2.5">
+                                        <div
+                                            className={cn(
+                                                "h-2.5 rounded-full",
+                                                totalAllocation > 100 ? "bg-destructive" : "bg-primary"
+                                            )}
+                                            style={{ width: `${Math.min(totalAllocation, 100)}%` }}
+                                        ></div>
+                                    </div>
                                 </div>
-                                <div className="w-full bg-muted rounded-full h-2.5">
-                                    <div
-                                        className={cn(
-                                            "h-2.5 rounded-full",
-                                            totalAllocation > 100 ? "bg-destructive" : "bg-primary"
-                                        )}
-                                        style={{ width: `${Math.min(totalAllocation, 100)}%` }}
-                                    ></div>
-                                </div>
-                            </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {projects.length > 0 ? (
+                                    <div className="text-xs">
+                                        <p className="font-bold mb-1">Проекты в статусе "Выполняется":</p>
+                                        <ul className="list-disc list-inside">
+                                            {projects.map(p => (
+                                                <li key={p.name}>{p.name} ({p.allocationPercent}%)</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs">Нет активных проектов.</p>
+                                )}
+                              </TooltipContent>
+                           </Tooltip>
                         ))}
                     </div>
                 </ScrollArea>
+              </TooltipProvider>
             </CardContent>
             <CardFooter className="pt-4 border-t">
                 <div className="flex items-start gap-2 text-xs text-muted-foreground p-1">
