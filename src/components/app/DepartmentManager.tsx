@@ -9,7 +9,7 @@ import * as XLSX from 'xlsx';
 import { nanoid } from 'nanoid';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -21,7 +21,7 @@ import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { findSimilarTasks, FindSimilarTasksOutput } from '@/ai/flows/find-similar-tasks-flow';
 import { chatWithBacklog, ChatWithBacklogOutput } from '@/ai/flows/chat-with-backlog-flow';
-import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit, FileText, User, Users, CalendarDays, Goal, TrendingUp, Notebook, Trash2, Percent, UserCheck } from 'lucide-react';
+import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit, FileText, User, Users, CalendarDays, Goal, TrendingUp, Notebook, Trash2, Percent, UserCheck, Lightbulb } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Cell } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -229,7 +229,7 @@ export default function DepartmentManager() {
     });
 
     orders.forEach(order => {
-      if (order.status === 'Выполняется' || order.status === 'Планируется') {
+      if (order.status === 'Выполняется') {
         order.team.forEach(member => {
           const currentLoad = workload.get(member.employee.id);
           if (currentLoad) {
@@ -239,6 +239,25 @@ export default function DepartmentManager() {
       }
     });
     return Array.from(workload.values()).sort((a,b) => b.totalAllocation - a.totalAllocation);
+  }, [orders]);
+  
+  const staffingSuggestion = useMemo(() => {
+    const totalRequiredAllocation = orders
+      .filter(order => order.status === 'Планируется' || order.status === 'Выполняется')
+      .reduce((total, order) => {
+        const orderAllocation = order.team.reduce((sum, member) => sum + member.allocationPercent, 0);
+        return total + orderAllocation;
+      }, 0);
+
+    const availableCapacity = mockEmployees.length * 100;
+    const deficit = totalRequiredAllocation - availableCapacity;
+
+    if (deficit <= 0) {
+      return "Текущей команды достаточно для выполнения всех активных и планируемых проектов.";
+    }
+
+    const neededEmployees = Math.ceil(deficit / 100);
+    return `Для одновременной реализации всех активных и планируемых проектов требуется еще ориентировочно ${neededEmployees} сотрудник(а/ов) (исходя из суммарной аллокации ${totalRequiredAllocation}% и текущей емкости команды ${availableCapacity}%).`;
   }, [orders]);
 
 
@@ -813,7 +832,7 @@ export default function DepartmentManager() {
         <Card className="shadow-xl rounded-xl">
             <CardHeader>
                 <CardTitle className="flex items-center gap-3 text-2xl font-bold"><Percent className="h-8 w-8 text-accent"/>Загрузка сотрудников</CardTitle>
-                <CardDescription>Суммарная аллокация по активным проектам. &gt;100% = перегрузка.</CardDescription>
+                <CardDescription>Суммарная аллокация по проектам в статусе "Выполняется". &gt;100% = перегрузка.</CardDescription>
             </CardHeader>
             <CardContent>
                 <ScrollArea className="h-[300px]">
@@ -843,6 +862,14 @@ export default function DepartmentManager() {
                     </div>
                 </ScrollArea>
             </CardContent>
+            <CardFooter className="pt-4 border-t">
+                <div className="flex items-start gap-2 text-xs text-muted-foreground p-1">
+                    <Lightbulb className="h-5 w-5 shrink-0 text-yellow-500 mt-0.5" />
+                    <div>
+                        <strong>Подсказка по ресурсам:</strong> {staffingSuggestion}
+                    </div>
+                </div>
+            </CardFooter>
         </Card>
       </div>
 
