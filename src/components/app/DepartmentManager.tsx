@@ -20,12 +20,13 @@ import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { findSimilarTasks, FindSimilarTasksOutput } from '@/ai/flows/find-similar-tasks-flow';
 import { chatWithBacklog, ChatWithBacklogOutput } from '@/ai/flows/chat-with-backlog-flow';
-import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit, FileText, User, Users, CalendarDays, Goal, TrendingUp, Notebook } from 'lucide-react';
+import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit, FileText, User, Users, CalendarDays, Goal, TrendingUp, Notebook, Trash2, Percent, UserCheck } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Cell } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { cn } from "@/lib/utils";
 
 
 // Data Structures (TypeScript Types)
@@ -35,6 +36,11 @@ interface Employee {
   id: string;
   name: string;
   role: string;
+}
+
+interface TeamMember {
+  employee: Employee;
+  allocationPercent: number;
 }
 
 interface StrategicGoal {
@@ -57,6 +63,7 @@ interface Order {
   confidence: number;
   effort: number;
   iceScore: number;
+  team: TeamMember[];
   notes: string;
 }
 
@@ -95,6 +102,10 @@ const mockOrders: Order[] = [
     confidence: 8,
     effort: 4,
     iceScore: 9 * 8 * 4,
+    team: [
+        { employee: mockEmployees[0], allocationPercent: 50 },
+        { employee: mockEmployees[2], allocationPercent: 75 },
+    ],
     notes: 'Первый этап завершен. Ожидаем поставку оборудования от вендора X. Есть риск задержки на 2 недели.'
   },
   {
@@ -112,6 +123,10 @@ const mockOrders: Order[] = [
     confidence: 9,
     effort: 6,
     iceScore: 7 * 9 * 6,
+    team: [
+        { employee: mockEmployees[1], allocationPercent: 100 },
+        { employee: mockEmployees[3], allocationPercent: 50 },
+    ],
     notes: ''
   },
 ];
@@ -138,8 +153,9 @@ export default function DepartmentManager() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
-  const [currentNotes, setCurrentNotes] = useState('');
 
+  // State for managing team composition within the details dialog
+  const [teamToAdd, setTeamToAdd] = useState<{ employeeId: string; allocation: number }>({ employeeId: '', allocation: 50 });
 
   // AI States
   const [isCheckingForDuplicates, setIsCheckingForDuplicates] = useState(false);
@@ -180,12 +196,6 @@ export default function DepartmentManager() {
       form.reset();
     }
   }, [isFormOpen, editingOrder, form]);
-
-  useEffect(() => {
-    if (isDetailsOpen && viewingOrder) {
-        setCurrentNotes(viewingOrder.notes);
-    }
-  }, [isDetailsOpen, viewingOrder]);
   
   // ---- Statistics Calculation ----
   const stats = useMemo(() => {
@@ -209,6 +219,25 @@ export default function DepartmentManager() {
         employeeData: Object.entries(employeeCounts).map(([name, value]) => ({ name, value })),
         goalData: Object.entries(goalCounts).map(([name, value]) => ({ name, value })),
     };
+  }, [orders]);
+  
+  const employeeWorkload = useMemo(() => {
+    const workload = new Map<string, { employee: Employee; totalAllocation: number }>();
+    mockEmployees.forEach(emp => {
+      workload.set(emp.id, { employee: emp, totalAllocation: 0 });
+    });
+
+    orders.forEach(order => {
+      if (order.status === 'Выполняется' || order.status === 'Планируется') {
+        order.team.forEach(member => {
+          const currentLoad = workload.get(member.employee.id);
+          if (currentLoad) {
+            currentLoad.totalAllocation += member.allocationPercent;
+          }
+        });
+      }
+    });
+    return Array.from(workload.values()).sort((a,b) => b.totalAllocation - a.totalAllocation);
   }, [orders]);
 
 
@@ -236,28 +265,54 @@ export default function DepartmentManager() {
   };
 
   const handleOpenDetails = (order: Order) => {
-    setViewingOrder(order);
+    setViewingOrder({ ...order }); // Create a copy to edit locally in the dialog
     setIsDetailsOpen(true);
   };
 
-  const handleSaveNotes = () => {
+  const handleSaveDetails = () => {
     if (!viewingOrder) return;
     setOrders(prevOrders =>
       prevOrders.map(o =>
-        o.id === viewingOrder.id ? { ...o, notes: currentNotes } : o
+        o.id === viewingOrder.id ? viewingOrder : o
       )
     );
-    // Update the viewingOrder as well so the change is reflected instantly if dialog stays open
-    setViewingOrder(prev => prev ? {...prev, notes: currentNotes} : null);
-    toast({ title: "Заметки сохранены" });
-    // setIsDetailsOpen(false); // Optional: close dialog on save
+    toast({ title: "Изменения в карточке сохранены" });
+    setIsDetailsOpen(false);
   };
+
+  const handleAddTeamMember = () => {
+    if (!viewingOrder || !teamToAdd.employeeId) {
+        toast({ title: 'Ошибка', description: 'Выберите сотрудника для добавления.', variant: 'destructive'});
+        return;
+    }
+    const employee = mockEmployees.find(e => e.id === teamToAdd.employeeId);
+    if (!employee) return;
+    
+    // Check if employee is already in the team
+    if (viewingOrder.team.some(tm => tm.employee.id === employee.id)) {
+        toast({ title: 'Сотрудник уже в команде', variant: 'destructive'});
+        return;
+    }
+
+    const newTeamMember: TeamMember = {
+        employee,
+        allocationPercent: teamToAdd.allocation
+    };
+
+    setViewingOrder(prev => prev ? { ...prev, team: [...prev.team, newTeamMember]} : null);
+    setTeamToAdd({ employeeId: '', allocation: 50 }); // Reset form
+  };
+  
+  const handleRemoveTeamMember = (employeeId: string) => {
+    if (!viewingOrder) return;
+    setViewingOrder(prev => prev ? { ...prev, team: prev.team.filter(tm => tm.employee.id !== employeeId)} : null);
+  }
+
 
   const handleFormSubmit = async (data: OrderFormValues) => {
     const iceScore = data.influence * data.confidence * data.effort;
 
     if (editingOrder) {
-      // Logic for updating an existing order
       setOrders(prevOrders =>
         prevOrders.map(o =>
           o.id === editingOrder.id
@@ -281,7 +336,6 @@ export default function DepartmentManager() {
       return;
     }
     
-    // Logic for creating a new order
     setIsCheckingForDuplicates(true);
     setSimilarTasksInfo(null);
     try {
@@ -313,7 +367,7 @@ export default function DepartmentManager() {
     } catch (error) {
       console.error(error);
       toast({ title: "Ошибка при проверке на дубликаты", variant: "destructive" });
-      addNewOrder(data); // Add order anyway if AI check fails
+      addNewOrder(data);
       resetAndCloseForm();
     } finally {
       setIsCheckingForDuplicates(false);
@@ -326,17 +380,18 @@ export default function DepartmentManager() {
         id: nanoid(),
         name: data.name,
         description: data.description,
-        initiator: mockEmployees[0], // Assuming current user is the first employee
+        initiator: mockEmployees[0], 
         currentOwner: mockEmployees.find(e => e.id === data.currentOwnerId)!,
         strategicGoal: mockStrategicGoals.find(g => g.id === data.strategicGoalId)!,
-        valueDriver: 'Не определен', // Placeholder
-        expectedEffect: 'Не определен', // Placeholder
+        valueDriver: 'Не определен',
+        expectedEffect: 'Не определен',
         dueDate: data.dueDate,
         status: 'Планируется',
         influence: data.influence,
         confidence: data.confidence,
         effort: data.effort,
         iceScore: iceScore,
+        team: [],
         notes: ''
       };
       setOrders(prev => [...prev, newOrder]);
@@ -366,6 +421,7 @@ export default function DepartmentManager() {
       'Усилия (E)': o.effort,
       'Срок': o.dueDate,
       'Стратегическая цель': o.strategicGoal.name,
+      'Команда': o.team.map(tm => `${tm.employee.name} (${tm.allocationPercent}%)`).join(', '),
       'Описание': o.description,
       'Заметки': o.notes,
     }));
@@ -386,7 +442,14 @@ export default function DepartmentManager() {
       setIsChatLoading(true);
 
       try {
-        const backlogJson = JSON.stringify(orders);
+        const backlogJson = JSON.stringify(orders.map(o => ({
+            id: o.id,
+            name: o.name,
+            status: o.status,
+            owner: o.currentOwner.name,
+            dueDate: o.dueDate,
+            description: o.description
+        })));
         const result: ChatWithBacklogOutput = await chatWithBacklog({ userQuestion: userMessage.text, backlogJson });
         const aiMessage: ChatMessage = { role: 'ai', text: result.answer };
         setChatHistory(prev => [...prev, aiMessage]);
@@ -409,7 +472,7 @@ export default function DepartmentManager() {
         case 'Завершен': return 'secondary';
         case 'Планируется': return 'outline';
         case 'Отклонён': return 'destructive';
-        case 'Приостановлен': return 'default'; // Or some other variant
+        case 'Приостановлен': return 'default';
         default: return 'outline';
     }
   };
@@ -594,7 +657,7 @@ export default function DepartmentManager() {
 
       {/* Details Dialog */}
        <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle className="text-2xl">{viewingOrder?.name}</DialogTitle>
             <DialogDescription>Карточка заказа. Здесь собрана вся актуальная информация.</DialogDescription>
@@ -649,82 +712,139 @@ export default function DepartmentManager() {
                 
                 <Separator />
                 
+                <div className="space-y-4">
+                    <h3 className="text-lg font-semibold flex items-center gap-2"><UserCheck className="h-5 w-5 text-primary"/>Команда проекта</h3>
+                    <div className="space-y-2">
+                        {viewingOrder?.team.map(member => (
+                            <div key={member.employee.id} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                                <div>
+                                    <p className="font-medium">{member.employee.name} <span className="text-xs text-muted-foreground">({member.employee.role})</span></p>
+                                    <p className="text-sm text-primary">Аллокация: {member.allocationPercent}%</p>
+                                </div>
+                                <Button variant="ghost" size="icon" onClick={() => handleRemoveTeamMember(member.employee.id)}>
+                                    <Trash2 className="h-4 w-4 text-destructive"/>
+                                </Button>
+                            </div>
+                        ))}
+                         {viewingOrder?.team.length === 0 && <p className="text-sm text-muted-foreground">Команда еще не сформирована.</p>}
+                    </div>
+                    <div className="flex gap-2 items-end pt-2 border-t mt-4">
+                        <div className="flex-grow">
+                            <Label htmlFor="employee-select" className="text-xs">Сотрудник</Label>
+                            <Select value={teamToAdd.employeeId} onValueChange={(val) => setTeamToAdd(p => ({...p, employeeId: val}))}>
+                                <SelectTrigger id="employee-select"><SelectValue placeholder="Выберите сотрудника" /></SelectTrigger>
+                                <SelectContent>
+                                    {mockEmployees.filter(emp => !viewingOrder?.team.some(tm => tm.employee.id === emp.id)).map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="w-28">
+                             <Label htmlFor="allocation-input" className="text-xs">Аллокация, %</Label>
+                            <Input id="allocation-input" type="number" min="1" max="100" value={teamToAdd.allocation} onChange={(e) => setTeamToAdd(p => ({...p, allocation: parseInt(e.target.value, 10) || 0}))} />
+                        </div>
+                        <Button type="button" onClick={handleAddTeamMember}>Добавить</Button>
+                    </div>
+                </div>
+
+                <Separator />
+
                  <div className="space-y-2">
                     <h3 className="text-lg font-semibold flex items-center gap-2"><Notebook className="h-5 w-5 text-primary"/>Заметки менеджера</h3>
                     <Textarea
                       placeholder="Здесь можно вести заметки по ходу выполнения заказа..."
                       rows={6}
-                      value={currentNotes}
-                      onChange={(e) => setCurrentNotes(e.target.value)}
+                      value={viewingOrder?.notes || ''}
+                      onChange={(e) => setViewingOrder(p => p ? {...p, notes: e.target.value} : null)}
                     />
                 </div>
             </div>
           </ScrollArea>
           <DialogFooter>
-            <Button type="button" onClick={() => handleSaveNotes()}>Сохранить заметки</Button>
-            <DialogClose asChild><Button type="button" variant="secondary">Закрыть</Button></DialogClose>
+            <Button type="button" onClick={handleSaveDetails}>Сохранить и Закрыть</Button>
+            <DialogClose asChild><Button type="button" variant="secondary">Отмена</Button></DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-
-      <Card className="shadow-xl rounded-xl">
-        <CardHeader>
-            <CardTitle className="flex items-center gap-3 text-2xl font-bold"><BarChart2 className="h-8 w-8 text-accent"/>Статистика</CardTitle>
-            <CardDescription>Обзор текущего состояния заказов.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-                <CardHeader><CardTitle className="text-lg flex items-center gap-2"><PieChartIcon className="h-5 w-5"/>Статусы</CardTitle></CardHeader>
-                <CardContent>
-                    <ChartContainer config={{}} className="h-[200px] w-full">
-                        <ResponsiveContainer>
-                            <PieChart>
-                                <Pie data={stats.statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                                    {stats.statusData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip content={<ChartTooltipContent hideLabel />} />
-                                <Legend />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </ChartContainer>
-                </CardContent>
-            </Card>
-             <Card className="md:col-span-2">
-                <CardHeader><CardTitle className="text-lg">Загрузка и цели</CardTitle></CardHeader>
-                <CardContent className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <div>
-                        <h4 className="font-semibold mb-2 text-sm">Заказы на сотрудника</h4>
-                         <ChartContainer config={{}} className="h-[200px] w-full">
-                            <ResponsiveContainer>
-                                <BarChart data={stats.employeeData} layout="vertical" margin={{ left: 50 }}>
-                                    <XAxis type="number" hide />
-                                    <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 12}}/>
-                                    <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent hideLabel />}/>
-                                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={4}/>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </ChartContainer>
-                    </div>
-                    <div>
-                       <h4 className="font-semibold mb-2 text-sm">Заказы по целям</h4>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="shadow-xl rounded-xl">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-3 text-2xl font-bold"><BarChart2 className="h-8 w-8 text-accent"/>Статистика</CardTitle>
+                <CardDescription>Обзор текущего состояния заказов.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                    <CardHeader><CardTitle className="text-lg flex items-center gap-2"><PieChartIcon className="h-5 w-5"/>Статусы</CardTitle></CardHeader>
+                    <CardContent>
                         <ChartContainer config={{}} className="h-[200px] w-full">
                             <ResponsiveContainer>
-                                <BarChart data={stats.goalData} layout="vertical" margin={{ left: 50 }}>
-                                     <XAxis type="number" hide />
-                                    <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 10}}/>
-                                    <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent hideLabel />}/>
-                                    <Bar dataKey="value" fill="hsl(var(--secondary))" radius={4}/>
-                                </BarChart>
+                                <PieChart>
+                                    <Pie data={stats.statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                                        {stats.statusData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip content={<ChartTooltipContent hideLabel />} />
+                                    <Legend />
+                                </PieChart>
                             </ResponsiveContainer>
                         </ChartContainer>
+                    </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader><CardTitle className="text-lg">Заказы по целям</CardTitle></CardHeader>
+                    <CardContent>
+                            <ChartContainer config={{}} className="h-[200px] w-full">
+                                <ResponsiveContainer>
+                                    <BarChart data={stats.goalData} layout="vertical" margin={{ left: 50 }}>
+                                         <XAxis type="number" hide />
+                                        <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 10}}/>
+                                        <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent hideLabel />}/>
+                                        <Bar dataKey="value" fill="hsl(var(--secondary))" radius={4}/>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </ChartContainer>
+                    </CardContent>
+                </Card>
+            </CardContent>
+          </Card>
+
+        <Card className="shadow-xl rounded-xl">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-3 text-2xl font-bold"><Percent className="h-8 w-8 text-accent"/>Загрузка сотрудников</CardTitle>
+                <CardDescription>Суммарная аллокация по активным проектам. &gt;100% = перегрузка.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <ScrollArea className="h-[300px]">
+                    <div className="space-y-4 pr-4">
+                        {employeeWorkload.map(({ employee, totalAllocation }) => (
+                            <div key={employee.id}>
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium">{employee.name}</span>
+                                    <span className={cn(
+                                        "text-sm font-semibold",
+                                        totalAllocation > 100 && "text-destructive"
+                                    )}>
+                                        {totalAllocation}%
+                                    </span>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-2.5">
+                                    <div 
+                                        className={cn(
+                                            "h-2.5 rounded-full",
+                                            totalAllocation > 100 ? "bg-destructive" : "bg-primary"
+                                        )} 
+                                        style={{ width: `${Math.min(totalAllocation, 100)}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                </CardContent>
-            </Card>
-        </CardContent>
-      </Card>
+                </ScrollArea>
+            </CardContent>
+        </Card>
+      </div>
+
 
       <Card className="shadow-xl rounded-xl">
         <CardHeader>
