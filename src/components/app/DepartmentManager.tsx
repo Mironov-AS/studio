@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
@@ -163,7 +164,7 @@ export default function DepartmentManager() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
-  
+
   const { toast } = useToast();
 
   const form = useForm<OrderFormValues>({
@@ -196,7 +197,7 @@ export default function DepartmentManager() {
       form.reset();
     }
   }, [isFormOpen, editingOrder, form]);
-  
+
   // ---- Statistics Calculation ----
   const stats = useMemo(() => {
     const statusCounts = orders.reduce((acc, order) => {
@@ -220,7 +221,7 @@ export default function DepartmentManager() {
         goalData: Object.entries(goalCounts).map(([name, value]) => ({ name, value })),
     };
   }, [orders]);
-  
+
   const employeeWorkload = useMemo(() => {
     const workload = new Map<string, { employee: Employee; totalAllocation: number }>();
     mockEmployees.forEach(emp => {
@@ -246,7 +247,7 @@ export default function DepartmentManager() {
       const newOrders = [...prevOrders];
       const orderIndex = newOrders.findIndex(o => o.id === orderId);
       if (orderIndex === -1) return prevOrders;
-      
+
       const order = { ...newOrders[orderIndex], [field]: value };
       order.iceScore = order.influence * order.confidence * order.effort;
       newOrders[orderIndex] = order;
@@ -258,7 +259,7 @@ export default function DepartmentManager() {
     setEditingOrder(null);
     setIsFormOpen(true);
   };
-  
+
   const handleOpenEditOrderForm = (order: Order) => {
     setEditingOrder(order);
     setIsFormOpen(true);
@@ -287,7 +288,7 @@ export default function DepartmentManager() {
     }
     const employee = mockEmployees.find(e => e.id === teamToAdd.employeeId);
     if (!employee) return;
-    
+
     // Check if employee is already in the team
     if (viewingOrder.team.some(tm => tm.employee.id === employee.id)) {
         toast({ title: 'Сотрудник уже в команде', variant: 'destructive'});
@@ -302,7 +303,7 @@ export default function DepartmentManager() {
     setViewingOrder(prev => prev ? { ...prev, team: [...prev.team, newTeamMember]} : null);
     setTeamToAdd({ employeeId: '', allocation: 50 }); // Reset form
   };
-  
+
   const handleRemoveTeamMember = (employeeId: string) => {
     if (!viewingOrder) return;
     setViewingOrder(prev => prev ? { ...prev, team: prev.team.filter(tm => tm.employee.id !== employeeId)} : null);
@@ -335,7 +336,7 @@ export default function DepartmentManager() {
       resetAndCloseForm();
       return;
     }
-    
+
     setIsCheckingForDuplicates(true);
     setSimilarTasksInfo(null);
     try {
@@ -373,14 +374,14 @@ export default function DepartmentManager() {
       setIsCheckingForDuplicates(false);
     }
   };
-  
+
   const addNewOrder = (data: OrderFormValues, force = false) => {
      const iceScore = data.influence * data.confidence * data.effort;
      const newOrder: Order = {
         id: nanoid(),
         name: data.name,
         description: data.description,
-        initiator: mockEmployees[0], 
+        initiator: mockEmployees[0],
         currentOwner: mockEmployees.find(e => e.id === data.currentOwnerId)!,
         strategicGoal: mockStrategicGoals.find(g => g.id === data.strategicGoalId)!,
         valueDriver: 'Не определен',
@@ -431,11 +432,11 @@ export default function DepartmentManager() {
     XLSX.writeFile(workbook, 'Управление_Подразделением_Заказы.xlsx');
     toast({ title: "Экспорт успешен" });
   };
-  
+
   const handleSendMessage = async (e: FormEvent) => {
       e.preventDefault();
       if (!chatInput.trim() || isChatLoading) return;
-      
+
       const userMessage: ChatMessage = { role: 'user', text: chatInput };
       setChatHistory(prev => [...prev, userMessage]);
       setChatInput('');
@@ -529,7 +530,7 @@ export default function DepartmentManager() {
                        <FormField name="dueDate" control={form.control} render={({ field }) => (
                           <FormItem><FormLabel>Срок выполнения</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
                        )} />
-                      
+
                        <div className="space-y-4 rounded-md border p-4">
                         <h4 className="mb-4 text-sm font-medium leading-none">Оценка ICE</h4>
                         <FormField name="influence" control={form.control} render={({ field }) => (
@@ -577,7 +578,7 @@ export default function DepartmentManager() {
                               </CardContent>
                           </Card>
                       )}
-                      
+
                       <DialogFooter>
                         {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 && !editingOrder ? (
                           <Button type="button" variant="secondary" onClick={() => addNewOrder(form.getValues(), true)}>Все равно создать</Button>
@@ -670,7 +671,7 @@ export default function DepartmentManager() {
                 </div>
 
                 <Separator />
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-4">
                         <h3 className="text-lg font-semibold flex items-center gap-2"><Users className="h-5 w-5 text-primary"/>Участники и сроки</h3>
@@ -709,9 +710,9 @@ export default function DepartmentManager() {
                         </Badge>
                     </div>
                 </div>
-                
+
                 <Separator />
-                
+
                 <div className="space-y-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2"><UserCheck className="h-5 w-5 text-primary"/>Команда проекта</h3>
                     <div className="space-y-2">
@@ -765,7 +766,7 @@ export default function DepartmentManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="shadow-xl rounded-xl">
             <CardHeader>
@@ -829,11 +830,11 @@ export default function DepartmentManager() {
                                     </span>
                                 </div>
                                 <div className="w-full bg-muted rounded-full h-2.5">
-                                    <div 
+                                    <div
                                         className={cn(
                                             "h-2.5 rounded-full",
                                             totalAllocation > 100 ? "bg-destructive" : "bg-primary"
-                                        )} 
+                                        )}
                                         style={{ width: `${Math.min(totalAllocation, 100)}%` }}
                                     ></div>
                                 </div>
