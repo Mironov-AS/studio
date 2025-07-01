@@ -21,7 +21,7 @@ import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { findSimilarTasks, FindSimilarTasksOutput } from '@/ai/flows/find-similar-tasks-flow';
 import { chatWithBacklog, ChatWithBacklogOutput } from '@/ai/flows/chat-with-backlog-flow';
-import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit, FileText, User, Users, CalendarDays, Goal, TrendingUp, Notebook, Trash2, Percent, UserCheck, Lightbulb } from 'lucide-react';
+import { KanbanSquare, PlusCircle, Download, Loader2, AlertTriangle, Bot, Send, BarChart2, PieChart as PieChartIcon, Edit, FileText, User, Users, CalendarDays, Goal, TrendingUp, Notebook, Trash2, Percent, UserCheck, Lightbulb, ArrowUp, ArrowDown } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, Legend, Cell } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -73,6 +73,9 @@ interface ChatMessage {
     role: 'user' | 'ai';
     text: string;
 }
+
+type SortableKeys = 'name' | 'strategicGoal' | 'status' | 'influence' | 'confidence' | 'effort' | 'iceScore';
+
 
 // Mock Data (will be replaced by a real backend/DB in a full application)
 const mockEmployees: Employee[] = [
@@ -152,6 +155,10 @@ export default function DepartmentManager() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+
+  // State for sorting and filtering
+  const [filters, setFilters] = useState({ name: '', status: 'all', ownerId: 'all' });
+  const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' } | null>({ key: 'iceScore', direction: 'descending' });
 
   // State for managing team composition within the details dialog
   const [teamToAdd, setTeamToAdd] = useState<{ employeeId: string; allocation: number }>({ employeeId: '', allocation: 50 });
@@ -258,6 +265,56 @@ export default function DepartmentManager() {
     const neededEmployees = Math.ceil(deficit / 100);
     return `Для одновременной реализации всех активных и планируемых проектов требуется еще ориентировочно ${neededEmployees} сотрудник(а/ов) (исходя из суммарной аллокации ${totalRequiredAllocation}% и текущей емкости команды ${availableCapacity}%).`;
   }, [orders]);
+
+  const filteredAndSortedOrders = useMemo(() => {
+      let filteredItems = [...orders];
+
+      // Filtering
+      filteredItems = filteredItems.filter(order => {
+          const nameMatch = filters.name ? order.name.toLowerCase().includes(filters.name.toLowerCase()) : true;
+          const statusMatch = filters.status !== 'all' ? order.status === filters.status : true;
+          const ownerMatch = filters.ownerId !== 'all' ? order.currentOwner.id === filters.ownerId : true;
+          return nameMatch && statusMatch && ownerMatch;
+      });
+
+      // Sorting
+      if (sortConfig !== null) {
+          filteredItems.sort((a, b) => {
+              let aValue, bValue;
+
+              switch (sortConfig.key) {
+                  case 'name':
+                  case 'status':
+                      aValue = a[sortConfig.key];
+                      bValue = b[sortConfig.key];
+                      return aValue.localeCompare(bValue, 'ru') * (sortConfig.direction === 'ascending' ? 1 : -1);
+                  case 'strategicGoal':
+                      aValue = a.strategicGoal.name;
+                      bValue = b.strategicGoal.name;
+                      return aValue.localeCompare(bValue, 'ru') * (sortConfig.direction === 'ascending' ? 1 : -1);
+                  default: // Numeric values
+                      aValue = a[sortConfig.key];
+                      bValue = b[sortConfig.key];
+                      if (aValue < bValue) {
+                          return sortConfig.direction === 'ascending' ? -1 : 1;
+                      }
+                      if (aValue > bValue) {
+                          return sortConfig.direction === 'ascending' ? 1 : -1;
+                      }
+                      return 0;
+              }
+          });
+      }
+      return filteredItems;
+  }, [orders, filters, sortConfig]);
+
+  const requestSort = (key: SortableKeys) => {
+      let direction: 'ascending' | 'descending' = 'ascending';
+      if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+          direction = 'descending';
+      }
+      setSortConfig({ key, direction });
+  };
 
 
   const updateIceScore = (orderId: string, field: 'influence' | 'confidence' | 'effort', value: number) => {
@@ -440,7 +497,7 @@ export default function DepartmentManager() {
   }
 
   const exportToXLSX = () => {
-    const dataToExport = orders.map(o => ({
+    const dataToExport = filteredAndSortedOrders.map(o => ({
       'ID': o.id,
       'Название': o.name,
       'Инициатор': o.initiator.name,
@@ -492,10 +549,11 @@ export default function DepartmentManager() {
         setIsChatLoading(false);
       }
   };
-
-  const sortedOrders = useMemo(() => {
-    return [...orders].sort((a, b) => b.iceScore - a.iceScore);
-  }, [orders]);
+  
+  const getSortIcon = (key: SortableKeys) => {
+    if (sortConfig?.key !== key) return null;
+    return sortConfig.direction === 'ascending' ? <ArrowUp className="h-4 w-4 ml-2" /> : <ArrowDown className="h-4 w-4 ml-2" />;
+  };
 
   const getStatusBadgeVariant = (status: Status) => {
     switch (status) {
@@ -507,7 +565,6 @@ export default function DepartmentManager() {
         default: return 'outline';
     }
   };
-
 
   return (
     <div className="space-y-6">
@@ -628,21 +685,80 @@ export default function DepartmentManager() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="flex flex-wrap gap-4 mb-4 p-4 border rounded-md bg-muted/50">
+              <div className="flex-grow min-w-[200px]">
+                  <Label htmlFor="filter-name" className="text-xs">Фильтр по названию</Label>
+                  <Input id="filter-name" placeholder="Введите название..." value={filters.name} onChange={(e) => setFilters(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="flex-grow min-w-[150px]">
+                   <Label htmlFor="filter-status" className="text-xs">Фильтр по статусу</Label>
+                  <Select value={filters.status} onValueChange={(value) => setFilters(f => ({ ...f, status: value }))}>
+                      <SelectTrigger id="filter-status"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                          <SelectItem value="all">Все статусы</SelectItem>
+                          <SelectItem value="Планируется">Планируется</SelectItem>
+                          <SelectItem value="Выполняется">Выполняется</SelectItem>
+                          <SelectItem value="Завершен">Завершен</SelectItem>
+                          <SelectItem value="Отклонён">Отклонён</SelectItem>
+                          <SelectItem value="Приостановлен">Приостановлен</SelectItem>
+                      </SelectContent>
+                  </Select>
+              </div>
+              <div className="flex-grow min-w-[150px]">
+                   <Label htmlFor="filter-owner" className="text-xs">Фильтр по ответственному</Label>
+                  <Select value={filters.ownerId} onValueChange={(value) => setFilters(f => ({ ...f, ownerId: value }))}>
+                      <SelectTrigger id="filter-owner"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                          <SelectItem value="all">Все ответственные</SelectItem>
+                          {mockEmployees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                      </SelectContent>
+                  </Select>
+              </div>
+          </div>
+
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[20%]">Название/Ответственный</TableHead>
-                <TableHead className="w-[15%]">Стратегическая цель</TableHead>
-                <TableHead className="w-[12%]">Статус</TableHead>
-                <TableHead className="w-[10%] text-center">I</TableHead>
-                <TableHead className="w-[10%] text-center">C</TableHead>
-                <TableHead className="w-[10%] text-center">E</TableHead>
-                <TableHead className="w-[8%] text-center font-bold">ICE</TableHead>
+                <TableHead className="w-[20%]">
+                    <Button variant="ghost" onClick={() => requestSort('name')} className="px-1">
+                        Название/Ответственный {getSortIcon('name')}
+                    </Button>
+                </TableHead>
+                <TableHead className="w-[15%]">
+                     <Button variant="ghost" onClick={() => requestSort('strategicGoal')} className="px-1">
+                        Стратегическая цель {getSortIcon('strategicGoal')}
+                    </Button>
+                </TableHead>
+                <TableHead className="w-[12%]">
+                     <Button variant="ghost" onClick={() => requestSort('status')} className="px-1">
+                        Статус {getSortIcon('status')}
+                    </Button>
+                </TableHead>
+                <TableHead className="w-[10%] text-center">
+                     <Button variant="ghost" onClick={() => requestSort('influence')} className="px-1">
+                        I {getSortIcon('influence')}
+                    </Button>
+                </TableHead>
+                <TableHead className="w-[10%] text-center">
+                     <Button variant="ghost" onClick={() => requestSort('confidence')} className="px-1">
+                        C {getSortIcon('confidence')}
+                    </Button>
+                </TableHead>
+                <TableHead className="w-[10%] text-center">
+                     <Button variant="ghost" onClick={() => requestSort('effort')} className="px-1">
+                        E {getSortIcon('effort')}
+                    </Button>
+                </TableHead>
+                <TableHead className="w-[8%] text-center font-bold">
+                     <Button variant="ghost" onClick={() => requestSort('iceScore')} className="px-1">
+                        ICE {getSortIcon('iceScore')}
+                    </Button>
+                </TableHead>
                 <TableHead className="w-[5%] text-center">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedOrders.map((order) => (
+              {filteredAndSortedOrders.map((order) => (
                 <TableRow key={order.id} onDoubleClick={() => handleOpenDetails(order)} className="cursor-pointer">
                   <TableCell>
                     <p className="font-medium">{order.name}</p>
@@ -941,3 +1057,4 @@ export default function DepartmentManager() {
     </div>
   );
 }
+
