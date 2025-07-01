@@ -111,13 +111,16 @@ const mockOrders: Order[] = [
   },
 ];
 
-// Zod Schema for the New Order Form
+// Zod Schema for the New/Edit Order Form
 const orderFormSchema = z.object({
   name: z.string().min(3, "Название должно быть не менее 3 символов."),
   description: z.string().min(10, "Описание должно быть не менее 10 символов."),
   currentOwnerId: z.string({ required_error: "Выберите ответственного." }),
   strategicGoalId: z.string({ required_error: "Выберите стратегическую цель." }),
   dueDate: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Выберите корректную дату." }),
+  influence: z.number().min(1).max(10),
+  confidence: z.number().min(1).max(10),
+  effort: z.number().min(1).max(10),
 });
 
 type OrderFormValues = z.infer<typeof orderFormSchema>;
@@ -146,6 +149,9 @@ export default function DepartmentManager() {
       currentOwnerId: undefined,
       strategicGoalId: undefined,
       dueDate: '',
+      influence: 5,
+      confidence: 5,
+      effort: 5,
     },
   });
 
@@ -157,6 +163,9 @@ export default function DepartmentManager() {
         currentOwnerId: editingOrder.currentOwner.id,
         strategicGoalId: editingOrder.strategicGoal.id,
         dueDate: editingOrder.dueDate,
+        influence: editingOrder.influence,
+        confidence: editingOrder.confidence,
+        effort: editingOrder.effort,
       });
     } else {
       form.reset();
@@ -212,6 +221,8 @@ export default function DepartmentManager() {
   };
 
   const handleFormSubmit = async (data: OrderFormValues) => {
+    const iceScore = data.influence * data.confidence * data.effort;
+
     if (editingOrder) {
       // Logic for updating an existing order
       setOrders(prevOrders =>
@@ -224,6 +235,10 @@ export default function DepartmentManager() {
                 currentOwner: mockEmployees.find(e => e.id === data.currentOwnerId)!,
                 strategicGoal: mockStrategicGoals.find(g => g.id === data.strategicGoalId)!,
                 dueDate: data.dueDate,
+                influence: data.influence,
+                confidence: data.confidence,
+                effort: data.effort,
+                iceScore: iceScore,
               }
             : o
         )
@@ -273,6 +288,7 @@ export default function DepartmentManager() {
   };
   
   const addNewOrder = (data: OrderFormValues, force = false) => {
+     const iceScore = data.influence * data.confidence * data.effort;
      const newOrder: Order = {
         id: nanoid(),
         name: data.name,
@@ -284,10 +300,10 @@ export default function DepartmentManager() {
         expectedEffect: 'Не определен', // Placeholder
         dueDate: data.dueDate,
         status: 'Планируется',
-        influence: 5,
-        confidence: 5,
-        effort: 5,
-        iceScore: 5 * 5 * 5,
+        influence: data.influence,
+        confidence: data.confidence,
+        effort: data.effort,
+        iceScore: iceScore,
       };
       setOrders(prev => [...prev, newOrder]);
       if (force) {
@@ -405,6 +421,37 @@ export default function DepartmentManager() {
                           <FormItem><FormLabel>Срок выполнения</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
                        )} />
                       
+                       <div className="space-y-4 rounded-md border p-4">
+                        <h4 className="mb-4 text-sm font-medium leading-none">Оценка ICE</h4>
+                        <FormField name="influence" control={form.control} render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Влияние (Influence): {field.value}</FormLabel>
+                            <FormControl>
+                              <Slider defaultValue={[field.value]} max={10} min={1} step={1} onValueChange={(value) => field.onChange(value[0])} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                        <FormField name="confidence" control={form.control} render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Уверенность (Confidence): {field.value}</FormLabel>
+                            <FormControl>
+                              <Slider defaultValue={[field.value]} max={10} min={1} step={1} onValueChange={(value) => field.onChange(value[0])} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                        <FormField name="effort" control={form.control} render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Усилия (Effort): {field.value}</FormLabel>
+                            <FormControl>
+                              <Slider defaultValue={[field.value]} max={10} min={1} step={1} onValueChange={(value) => field.onChange(value[0])} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                      </div>
+
                       {similarTasksInfo && similarTasksInfo.similarTaskIds.length > 0 && !editingOrder && (
                           <Card className="bg-destructive/10 border-destructive/50 p-4">
                               <CardHeader className="p-0">
